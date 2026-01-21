@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProcessadorLDs - Processamento de Listas de Documentos</title>
+  <link rel="stylesheet" href="css/styles.css">
+  
+  <!-- SheetJS para processamento de Excel -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  
+  <!-- PapaParse para processamento de CSV -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📄 ProcessadorLDs</h1>
+      <p>Processamento de Listas de Documentos (LDs)</p>
+    </header>
+    
+    <main>
+      <!-- Seção de Upload -->
+      <section class="section">
+        <h2>Selecionar Arquivos</h2>
+        <div class="upload-area" id="uploadArea">
+          <div class="upload-icon">📁</div>
+          <div class="upload-text">Arraste arquivos aqui ou clique para selecionar</div>
+          <div class="upload-hint">Formatos suportados: CSV, XLSX</div>
+          <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls">
+        </div>
+        <div class="buttons-group">
+          <button class="btn btn-primary" id="btnProcessar" disabled>Processar</button>
+          <button class="btn btn-secondary" id="btnLimpar">Limpar</button>
+        </div>
+      </section>
+      
+      <!-- Progress Bar -->
+      <div class="progress-container" id="progressContainer">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+      </div>
+      
+      <!-- Estatísticas -->
+      <section class="section hidden" id="sectionEstatisticas">
+        <h2>Estatísticas</h2>
+        <div class="stats-grid" id="statsGrid"></div>
+      </section>
+      
+      <!-- Status por Arquivo -->
+      <section class="section hidden" id="sectionStatus">
+        <h2>Status por Arquivo</h2>
+        <div class="table-container">
+          <table id="tableStatus">
+            <thead>
+              <tr>
+                <th>Arquivo</th>
+                <th>Status</th>
+                <th>Total de Linhas</th>
+                <th>Linhas Válidas</th>
+                <th>Linhas Incompletas</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+      
+      <!-- Problemas -->
+      <section class="section hidden" id="sectionProblemas">
+        <h2>Problemas Identificados</h2>
+        <ul class="problems-list" id="problemsList"></ul>
+      </section>
+      
+      <!-- Dados Processados -->
+      <section class="section hidden" id="sectionDados">
+        <h2>Dados Processados</h2>
+        <div class="table-container">
+          <table id="tableDados">
+            <thead>
+              <tr>
+                <th>Arquivo</th>
+                <th>LD</th>
+                <th>Revisão</th>
+                <th>NO VALE</th>
+                <th>PREVISTO</th>
+                <th>PREVISTO 1</th>
+                <th>PREVISTO 2</th>
+                <th>REPROGRAMADO</th>
+                <th>FORMATO</th>
+                <th>PAGS/ FOLHAS</th>
+                <th>Disciplina</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+      
+      <!-- Exportação -->
+      <section class="section hidden" id="sectionExportacao">
+        <h2>Exportar Resultados</h2>
+        <div class="export-options">
+          <select id="exportFormat">
+            <option value="json">JSON (Recomendado)</option>
+            <option value="xlsx">Excel (XLSX)</option>
+            <option value="csv">CSV</option>
+          </select>
+          <button class="btn btn-success" id="btnExportar">Exportar</button>
+        </div>
+      </section>
+    </main>
+  </div>
+  
+  <!-- Scripts -->
+  <script src="js/processor.js"></script>
+  <script src="js/validator.js"></script>
+  <script src="js/exporter.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

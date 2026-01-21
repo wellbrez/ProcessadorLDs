@@ -1,0 +1,53 @@
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Arquivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.log
+*.cache
+
+# Arquivos de teste e dados
+test-data/
+*.xlsx
+*.xls
+*.csv
+!exemplos/*.csv
+!exemplos/*.xlsx
+
+# Arquivos de saída gerados
+output/
+resultados/
+*.output.*
+
+# Node modules (caso adicione dependências no futuro)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.*.local
+
+# Arquivos de backup
+*.bak
+*.backup
+*~
+
+# Arquivos do Windows
+$RECYCLE.BIN/
+*.lnk
+
+# Arquivos de build (se houver)
+dist/
+build/

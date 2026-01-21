@@ -1,0 +1,62 @@
+# Regras do Projeto - ProcessadorLDs
+
+## Contexto do Projeto
+Este projeto é um aplicativo standalone para processamento de Listas de Documentos (LDs) em diversos formatos (CSV, XLSX, etc.). O objetivo é extrair, validar e consolidar dados de múltiplas LDs, identificando problemas que impedem o processamento.
+
+## Regras de Desenvolvimento
+
+### Arquitetura
+- Aplicação standalone HTML/JavaScript que roda localmente
+- Não requer servidor ou instalação de dependências
+- Pode usar bibliotecas via CDN (SheetJS para Excel, PapaParse para CSV)
+- Processamento client-side apenas
+
+### Estrutura de Dados
+- **Colunas principais**: NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, REPROGRAMADO, REPROGRAMADO 1, REPROGRAMADO 2, REALIZADO, REALIZADO 1, REALIZADO 2, FORMATO, PAGS/ FOLHAS, AÇÕES
+- **Filtros**: Linhas com AÇÕES = "E" devem ser desconsideradas
+- **Validações obrigatórias**: NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto
+
+### Processamento de Arquivos
+1. Identificar cabeçalho "NO VALE" ou "VALE DOCUMENT NUMBER" (pode estar em Column1 ou Column2)
+2. Processar e limpar dados (maiúsculas, trim, clean)
+3. Normalizar nomes de colunas usando tabela de conversão
+4. Extrair disciplina do número do vale
+5. Validar dados obrigatórios
+6. Filtrar linhas com AÇÕES = "E"
+7. Gerar relatório de status para cada LD
+
+### Validações de Problemas
+- **Planilhas inconsistentes**: Mais de 1 planilha ativa (além de F. Rosto)
+- **LD fora do padrão**: Não consegue identificar cabeçalho ou transformar dados
+- **Conteúdo não processado**: Arquivo corrompido ou com rótulo de confidencialidade
+- **Linhas incompletas**: Células obrigatórias sem preenchimento
+- **Nome de arquivo inválido**: Não segue padrão LD_*_REV_*.xlsx ou DF_*_REV_*.xlsx
+
+### Extração de Disciplina
+- Extrair do número do vale usando lógica:
+  - Reverter string do NO VALE
+  - Extrair valor entre delimitadores "-" e "-"
+  - Se tamanho = 1, usar esse valor
+  - Se sétimo caractere = "-", usar "J"
+  - Caso contrário, null
+
+### Formato de Saída
+- Suportar múltiplos formatos: CSV, Excel (XLSX), JSON
+- JSON é preferencial para integração com próximos módulos
+- Incluir metadados de processamento (status, erros, validações)
+
+### Código
+- Sempre adicionar comentários Swagger/JSDoc para documentação automática
+- Usar JavaScript ES6+ com suporte a navegadores modernos
+- Tratamento de erros robusto com mensagens claras
+- Validação de dados em cada etapa do processamento
+
+### Testes
+- Testar com arquivos reais de exemplo
+- Validar todos os tipos de erro possíveis
+- Garantir compatibilidade com diferentes formatos de LD
+
+### Documentação
+- Manter README.md, PROJETO.md, ARQUITETURA.md, GUIA-DESENVOLVIMENTO.md, GUIA-STARTUP.md atualizados
+- Documentar cada função com propósito e parâmetros
+- Incluir exemplos de uso
