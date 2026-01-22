@@ -654,13 +654,20 @@ function extrairDisciplina(noVale) {
 
 /**
  * @swagger
- * Converte string de data para objeto Date
- * @param {string} dataStr - String de data (formato dd/MM/yyyy)
+ * Converte string ou número de data para objeto Date
+ * Suporta múltiplos formatos: dd/MM/yyyy, dd/MM/yy, números seriais do Excel, yyyy-MM-dd (ISO)
+ * @param {string|number} dataStr - String de data ou número serial do Excel
+ *   Formatos suportados:
+ *   - dd/MM/yyyy (ex: 21/01/2026)
+ *   - dd/MM/yy (ex: 21/01/26 → 2026, 21/01/99 → 1999)
+ *   - Número serial do Excel (ex: 44301)
+ *   - yyyy-MM-dd (ISO)
  * @returns {Date|null} Objeto Date ou null se inválido
  */
 function converterData(dataStr) {
   // Seguindo lógica do Power Query: Date.From(DateTime.From([PREVISTO 2]))
   // DateTime.From tenta converter string para DateTime, depois Date.From extrai apenas a data
+  // Prioridade: formatos com barras (datas) são verificados ANTES de números seriais do Excel
   
   // Se for null ou undefined, retornar null
   if (dataStr === null || dataStr === undefined) {
