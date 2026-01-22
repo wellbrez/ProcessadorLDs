@@ -259,9 +259,10 @@ function exibirResultados() {
     document.getElementById('sectionProblemas').classList.remove('hidden');
   }
   
-  if (resultadoValidacao.estatisticas.totalLinhasValidas > 0) {
-    document.getElementById('sectionDados').classList.remove('hidden');
-  }
+  // Tabela de dados processados fica oculta por padrão
+  // if (resultadoValidacao.estatisticas.totalLinhasValidas > 0) {
+  //   document.getElementById('sectionDados').classList.remove('hidden');
+  // }
 }
 
 /**
