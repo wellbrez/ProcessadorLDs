@@ -698,29 +698,45 @@ function converterData(dataStr) {
   }
   
   try {
-    // Verificar se é um número serial do Excel em formato string (ex: "44301")
-    const numeroSerial = parseFloat(dataStrTrimmed);
-    if (!isNaN(numeroSerial) && numeroSerial > 0 && numeroSerial < 1000000) {
-      // Pode ser serial do Excel, tentar converter
-      const excelEpoch = new Date(1899, 11, 30);
-      const data = new Date(excelEpoch.getTime() + (numeroSerial - 1) * 24 * 60 * 60 * 1000);
-      if (!isNaN(data.getTime()) && data.getFullYear() >= 1900 && data.getFullYear() <= 2100) {
-        return data;
+    // PRIORIDADE 1: Tentar formato dd/MM/yyyy ou dd/MM/yy (formato brasileiro comum)
+    // Verificar PRIMEIRO se tem barras para evitar interpretar como número serial
+    if (dataStrTrimmed.includes('/')) {
+      const partes = dataStrTrimmed.split('/');
+      if (partes.length === 3) {
+        const dia = parseInt(partes[0], 10);
+        const mes = parseInt(partes[1], 10) - 1; // Mês é 0-indexed
+        let ano = parseInt(partes[2], 10);
+        
+        // Se o ano tem 2 dígitos, converter para 4 dígitos
+        // Assumir que anos 00-49 são 2000-2049 e anos 50-99 são 1950-1999
+        if (ano >= 0 && ano <= 99) {
+          if (ano <= 49) {
+            ano = 2000 + ano; // 00-49 → 2000-2049
+          } else {
+            ano = 1900 + ano; // 50-99 → 1950-1999
+          }
+        }
+        
+        if (!isNaN(dia) && !isNaN(mes) && !isNaN(ano) && 
+            dia >= 1 && dia <= 31 && mes >= 0 && mes <= 11 && ano >= 1900 && ano <= 2100) {
+          const data = new Date(ano, mes, dia);
+          // Verificar se a data é válida (evita datas inválidas como 31/02)
+          if (data.getDate() === dia && data.getMonth() === mes && data.getFullYear() === ano) {
+            return data;
+          }
+        }
       }
     }
     
-    // Tentar formato dd/MM/yyyy (formato brasileiro comum)
-    const partes = dataStrTrimmed.split('/');
-    if (partes.length === 3) {
-      const dia = parseInt(partes[0], 10);
-      const mes = parseInt(partes[1], 10) - 1; // Mês é 0-indexed
-      const ano = parseInt(partes[2], 10);
-      
-      if (!isNaN(dia) && !isNaN(mes) && !isNaN(ano) && 
-          dia >= 1 && dia <= 31 && mes >= 0 && mes <= 11 && ano >= 1900 && ano <= 2100) {
-        const data = new Date(ano, mes, dia);
-        // Verificar se a data é válida (evita datas inválidas como 31/02)
-        if (data.getDate() === dia && data.getMonth() === mes && data.getFullYear() === ano) {
+    // PRIORIDADE 2: Verificar se é um número serial do Excel em formato string (ex: "44301")
+    // Só tentar se NÃO contém barras (já processado acima)
+    if (!dataStrTrimmed.includes('/') && !dataStrTrimmed.includes('-')) {
+      const numeroSerial = parseFloat(dataStrTrimmed);
+      if (!isNaN(numeroSerial) && numeroSerial > 0 && numeroSerial < 1000000) {
+        // Pode ser serial do Excel, tentar converter
+        const excelEpoch = new Date(1899, 11, 30);
+        const data = new Date(excelEpoch.getTime() + (numeroSerial - 1) * 24 * 60 * 60 * 1000);
+        if (!isNaN(data.getTime()) && data.getFullYear() >= 1900 && data.getFullYear() <= 2100) {
           return data;
         }
       }

@@ -80,7 +80,7 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
    - Converte usando tabela: "PREVISTO 0" → "PREVISTO", "PREVISTO 1" → "PREVISTO 1", etc.
 6. **Transformação**: Normaliza e limpa os dados
 7. **Extração**: Extrai colunas relevantes e disciplina
-8. **Conversão**: Converte PREVISTO 2 para DataPrevisto (objeto Date)
+8. **Conversão**: Converte PREVISTO 2 para DataPrevisto (objeto Date) - aceita formatos dd/MM/yyyy e dd/MM/yy
 9. **Filtragem**: Remove linhas com AÇÕES = "E"
 10. **Validação**: Verifica dados obrigatórios (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
 11. **Consolidação**: Agrupa dados de múltiplas LDs
@@ -225,7 +225,7 @@ Arquivo XLSX com:
 
 8. **Nenhuma Linha Contabilizada**
    - Nenhuma linha válida após filtros
-   - Mensagem: "Nenhuma linha foi contabilizada, verifique se está no formato adequado e se o 'previsto' está preenchido corretamente, com datas válidas dd/MM/yyyy"
+   - Mensagem: "Nenhuma linha foi contabilizada, verifique se está no formato adequado e se o 'previsto' está preenchido corretamente, com datas válidas (dd/MM/yyyy ou dd/MM/yy)"
 
 ## Próximos Passos
 

@@ -61,7 +61,7 @@ O ProcessadorLDs é uma aplicação web standalone que roda completamente no cli
 - Transformação de dados
 - Normalização de colunas usando tabela de conversão
 - Extração de disciplina do número do vale
-- Conversão de PREVISTO 2 para DataPrevisto (objeto Date)
+- Conversão de PREVISTO 2 para DataPrevisto (objeto Date) - suporta formatos dd/MM/yyyy e dd/MM/yy
 - Filtragem de linhas com AÇÕES = "E"
 
 **Funções Principais:**

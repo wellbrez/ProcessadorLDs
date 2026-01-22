@@ -158,6 +158,29 @@ Transforma dados brutos em formato padronizado. Implementa lógica do Power Quer
 2. Combinação com índice: Cria "PREVISTO 0", "PREVISTO 1", "PREVISTO 2" a partir de célula mesclada
 3. Conversão: "PREVISTO 0" → "PREVISTO", "PREVISTO 1" → "PREVISTO 1", etc.
 
+#### `converterData(dataStr)`
+Converte string ou número para objeto Date. Suporta múltiplos formatos de data.
+
+**Parâmetros:**
+- `dataStr` (string|number): Data a converter (pode ser string no formato dd/MM/yyyy, dd/MM/yy, ou número serial do Excel)
+
+**Retorna:**
+- `Date|null`: Objeto Date ou null se não conseguir converter
+
+**Formatos suportados:**
+1. dd/MM/yyyy (ex: 21/01/2026)
+2. dd/MM/yy (ex: 21/01/26 → 2026, 21/01/99 → 1999)
+   - Anos 00-49 são interpretados como 2000-2049
+   - Anos 50-99 são interpretados como 1950-1999
+3. Números seriais do Excel (ex: 44301)
+4. yyyy-MM-dd (ISO)
+5. Outros formatos genéricos do JavaScript Date
+
+**Lógica:**
+1. Verifica primeiro se contém barras (formato de data) antes de tentar como número serial
+2. Para anos de 2 dígitos, aplica regra de conversão (00-49 → 2000-2049, 50-99 → 1950-1999)
+3. Valida se a data resultante é válida e está no range 1900-2100
+
 #### `extrairDisciplina(noVale)`
 Extrai disciplina do número do vale.
 
@@ -193,7 +216,7 @@ Valida dados obrigatórios de uma linha.
 - FORMATO
 - PAGS/ FOLHAS
 - Disciplina (extraído do NO VALE)
-- DataPrevisto (convertido de PREVISTO 2, objeto Date)
+- DataPrevisto (convertido de PREVISTO 2, objeto Date) - aceita formatos dd/MM/yyyy e dd/MM/yy
 
 #### `validarNomeArquivo(nomeArquivo)`
 Valida formato do nome do arquivo.

@@ -17,7 +17,7 @@ O ProcessadorLDs é uma aplicação web standalone que processa múltiplas Lista
 - ✅ Validação automática de dados obrigatórios
 - ✅ Identificação de problemas nas LDs (incluindo inconsistências de LD/Revisão)
 - ✅ Extração automática de disciplina do número do vale
-- ✅ Conversão automática de PREVISTO 2 para DataPrevisto
+- ✅ Conversão automática de PREVISTO 2 para DataPrevisto (suporta dd/MM/yyyy e dd/MM/yy)
 - ✅ Filtro de linhas com AÇÕES = "E"
 - ✅ Exportação em múltiplos formatos (CSV, XLSX, JSON)
 - ✅ Interface web standalone (não requer servidor)
@@ -53,7 +53,7 @@ ProcessadorLDs/
 - Normalização de nomes de colunas usando tabela de conversão
 - Limpeza e padronização de dados
 - Extração de disciplina do número do vale
-- Conversão de PREVISTO 2 para DataPrevisto (objeto Date)
+- Conversão de PREVISTO 2 para DataPrevisto (objeto Date) - suporta formatos dd/MM/yyyy e dd/MM/yy
 
 ### Validações
 - Verificação de dados obrigatórios (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)

@@ -151,7 +151,7 @@ O nome do arquivo pode seguir padrões como:
 **Soluções:**
 1. Verifique se há linhas com AÇÕES diferente de "E"
 2. Verifique se todas as colunas obrigatórias estão preenchidas
-3. Verifique se PREVISTO 2 está no formato dd/MM/yyyy (usado para gerar DataPrevisto)
+3. Verifique se PREVISTO 2 está no formato dd/MM/yyyy ou dd/MM/yy (usado para gerar DataPrevisto)
 4. Verifique se o cabeçalho tem células mescladas e se foram processadas corretamente
 5. Consulte os detalhes do ProcessarNomeERevisao para verificar extração de LD e revisão
 
