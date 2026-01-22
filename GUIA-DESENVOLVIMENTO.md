@@ -1,5 +1,8 @@
 # GUIA-DESENVOLVIMENTO.md - ProcessadorLDs
 
+**Autor:** Wellington Bravin  
+**Data:** 21/01/2026
+
 ## Guia para Desenvolvedores
 
 Este guia fornece informações para desenvolvedores que desejam contribuir ou entender o código do ProcessadorLDs.
@@ -124,14 +127,36 @@ Identifica a linha do cabeçalho "NO VALE".
 **Retorna:**
 - `number|null`: Índice da linha ou null
 
-#### `transformarDados(dados)`
-Transforma dados brutos em formato padronizado.
+#### `ProcessarNomeERevisao(nomeArquivo, estruturaArquivo, dadosBrutos)`
+Extrai informações de LD e revisão de todas as fontes disponíveis. Executado ANTES de identificar cabeçalho.
 
 **Parâmetros:**
-- `dados` (Array): Dados brutos
+- `nomeArquivo` (string): Nome do arquivo
+- `estruturaArquivo` (Object): Estrutura com dadosCapa e dadosPrincipal
+- `dadosBrutos` (Array): Dados brutos da folha principal
+
+**Retorna:**
+- `Object`: `{ ldsEncontradas: Array, revisoesEncontradas: Array, totalFontesLD: number, totalFontesRevisao: number }`
+
+**Fontes de extração:**
+1. Nome do arquivo (regex para padrões LD-8001PZ-F-XXXXX_REV_N)
+2. Folha CAPA/ROSTO (se existir)
+3. Folha principal da LD
+
+#### `transformarDados(dadosBrutos, indiceCabecalho)`
+Transforma dados brutos em formato padronizado. Implementa lógica do Power Query para células mescladas.
+
+**Parâmetros:**
+- `dadosBrutos` (Array): Dados brutos da planilha
+- `indiceCabecalho` (number): Índice da linha do cabeçalho
 
 **Retorna:**
 - `Array`: Dados transformados
+
+**Lógica de transformação do cabeçalho:**
+1. FillDown: Preenche células vazias com valor acima (para células mescladas)
+2. Combinação com índice: Cria "PREVISTO 0", "PREVISTO 1", "PREVISTO 2" a partir de célula mesclada
+3. Conversão: "PREVISTO 0" → "PREVISTO", "PREVISTO 1" → "PREVISTO 1", etc.
 
 #### `extrairDisciplina(noVale)`
 Extrai disciplina do número do vale.
@@ -160,15 +185,15 @@ Valida dados obrigatórios de uma linha.
 **Retorna:**
 - `Object`: `{ valida: boolean, erros: Array }`
 
-**Campos obrigatórios:**
+**Campos obrigatórios** (seguindo lógica do Power Query original):
 - NO VALE
-- PREVISTO
-- PREVISTO 1
-- PREVISTO 2
+- PREVISTO (pode vir de célula mesclada no cabeçalho)
+- PREVISTO 1 (pode vir de célula mesclada no cabeçalho)
+- PREVISTO 2 (pode vir de célula mesclada no cabeçalho, usado para gerar DataPrevisto)
 - FORMATO
 - PAGS/ FOLHAS
-- Disciplina
-- DataPrevisto (calculado de PREVISTO 2)
+- Disciplina (extraído do NO VALE)
+- DataPrevisto (convertido de PREVISTO 2, objeto Date)
 
 #### `validarNomeArquivo(nomeArquivo)`
 Valida formato do nome do arquivo.
@@ -224,9 +249,15 @@ O sistema usa uma tabela de conversão para normalizar nomes de colunas. Esta ta
 const TABELA_CONVERSAO = [
   { old: 'NO VALE', new: 'NO VALE' },
   { old: 'VALE DOCUMENT NUMBER', new: 'NO VALE' },
+  { old: 'PREVISTO', new: 'PREVISTO' },
+  { old: 'PREVISTO 0', new: 'PREVISTO' }, // Célula mesclada - primeira coluna
+  { old: 'PREVISTO 1', new: 'PREVISTO 1' },
+  { old: 'PREVISTO 2', new: 'PREVISTO 2' },
   // ... mais conversões
 ];
 ```
+
+**Nota**: A tabela inclui conversões para células mescladas (ex: "PREVISTO 0" → "PREVISTO") que são criadas durante a transformação do cabeçalho.
 
 ## Tratamento de Erros
 

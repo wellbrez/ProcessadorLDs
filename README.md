@@ -2,6 +2,9 @@
 
 Aplicativo standalone para processamento de Listas de Documentos (LDs) em diversos formatos.
 
+**Autor:** Wellington Bravin  
+**Data:** 21/01/2026
+
 ## 📋 Descrição
 
 O ProcessadorLDs é uma aplicação web standalone que processa múltiplas Listas de Documentos (LDs) em formatos CSV, XLSX e outros. O aplicativo extrai, valida e consolida dados de LDs, identificando problemas que impedem o processamento.
@@ -9,13 +12,17 @@ O ProcessadorLDs é uma aplicação web standalone que processa múltiplas Lista
 ## 🚀 Características
 
 - ✅ Processamento de múltiplos formatos (CSV, XLSX)
+- ✅ **ProcessarNomeERevisao**: Extração de LD e revisão de 3 fontes com validação de consistência
+- ✅ Transformação de cabeçalho com células mescladas (seguindo lógica do Power Query)
 - ✅ Validação automática de dados obrigatórios
-- ✅ Identificação de problemas nas LDs
+- ✅ Identificação de problemas nas LDs (incluindo inconsistências de LD/Revisão)
 - ✅ Extração automática de disciplina do número do vale
+- ✅ Conversão automática de PREVISTO 2 para DataPrevisto
 - ✅ Filtro de linhas com AÇÕES = "E"
 - ✅ Exportação em múltiplos formatos (CSV, XLSX, JSON)
 - ✅ Interface web standalone (não requer servidor)
 - ✅ Processamento 100% client-side
+- ✅ Informações detalhadas do ProcessarNomeERevisao disponíveis na interface
 
 ## 📦 Estrutura do Projeto
 
@@ -39,13 +46,18 @@ ProcessadorLDs/
 ## 🎯 Funcionalidades Principais
 
 ### Processamento de LDs
+- **ProcessarNomeERevisao**: Extração de LD e revisão de 3 fontes (nome arquivo, CAPA/ROSTO, folha principal)
+- Validação de consistência entre fontes encontradas
 - Identificação automática do cabeçalho "NO VALE" ou "VALE DOCUMENT NUMBER"
-- Normalização de nomes de colunas
+- **Transformação de cabeçalho com células mescladas** (FillDown + combinação com índice)
+- Normalização de nomes de colunas usando tabela de conversão
 - Limpeza e padronização de dados
 - Extração de disciplina do número do vale
+- Conversão de PREVISTO 2 para DataPrevisto (objeto Date)
 
 ### Validações
-- Verificação de dados obrigatórios
+- Verificação de dados obrigatórios (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
+- Validação de consistência de LD e revisão entre múltiplas fontes
 - Identificação de planilhas inconsistentes
 - Detecção de LDs fora do padrão
 - Validação de formato de arquivo
@@ -90,5 +102,5 @@ Este projeto é de uso interno.
 
 ## 👥 Autor
 
-Desenvolvido para processamento de Listas de Documentos da Vale.
-# ProcessadorLDs
+**Wellington Bravin**  
+Desenvolvido em 21/01/2026 para processamento de Listas de Documentos da Vale.

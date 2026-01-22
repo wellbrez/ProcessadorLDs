@@ -14,23 +14,48 @@ Este projeto é um aplicativo standalone para processamento de Listas de Documen
 ### Estrutura de Dados
 - **Colunas principais**: NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, REPROGRAMADO, REPROGRAMADO 1, REPROGRAMADO 2, REALIZADO, REALIZADO 1, REALIZADO 2, FORMATO, PAGS/ FOLHAS, AÇÕES
 - **Filtros**: Linhas com AÇÕES = "E" devem ser desconsideradas
-- **Validações obrigatórias**: NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto
+- **Validações obrigatórias**: NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto (seguindo lógica do Power Query original)
+- **Células mescladas**: O cabeçalho pode ter células mescladas (ex: "PREVISTO" cobrindo 3 colunas). A transformação deve usar FillDown e combinação com índice para criar PREVISTO, PREVISTO 1, PREVISTO 2
 
 ### Processamento de Arquivos
-1. Identificar cabeçalho "NO VALE" ou "VALE DOCUMENT NUMBER" (pode estar em Column1 ou Column2)
-2. Processar e limpar dados (maiúsculas, trim, clean)
-3. Normalizar nomes de colunas usando tabela de conversão
-4. Extrair disciplina do número do vale
-5. Validar dados obrigatórios
-6. Filtrar linhas com AÇÕES = "E"
-7. Gerar relatório de status para cada LD
+1. **ProcessarNomeERevisao**: Extrair informações de LD e revisão de 3 fontes (ANTES de identificar cabeçalho):
+   - Nome do arquivo (usando regex para padrões LD-8001PZ-F-XXXXX_REV_N)
+   - Folha CAPA/ROSTO (se existir)
+   - Folha principal da LD
+   - Validar consistência entre as fontes encontradas
+   - Retornar informações detalhadas para log/relatório
+2. Identificar cabeçalho "NO VALE" ou "VALE DOCUMENT NUMBER" (pode estar em Column1 ou Column2)
+3. **Transformar cabeçalho com células mescladas**:
+   - Aplicar FillDown (preencher células vazias com valor acima) para lidar com células mescladas
+   - Combinar com índice para criar "PREVISTO 0", "PREVISTO 1", "PREVISTO 2" a partir de célula mesclada "PREVISTO"
+   - Converter usando tabela de conversão: "PREVISTO 0" → "PREVISTO", "PREVISTO 1" → "PREVISTO 1", etc.
+4. Processar e limpar dados (maiúsculas, trim, clean)
+5. Normalizar nomes de colunas usando tabela de conversão
+6. Extrair disciplina do número do vale
+7. Converter PREVISTO 2 para DataPrevisto (objeto Date)
+8. Validar dados obrigatórios (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
+9. Filtrar linhas com AÇÕES = "E"
+10. Gerar relatório de status para cada LD com informações detalhadas do ProcessarNomeERevisao
 
 ### Validações de Problemas
+- **Inconsistência de LD**: LD encontrada em múltiplas fontes com valores diferentes (nome arquivo vs CAPA vs folha LD)
+- **Inconsistência de Revisão**: Revisão encontrada em múltiplas fontes com valores diferentes
 - **Planilhas inconsistentes**: Mais de 1 planilha ativa (além de F. Rosto)
 - **LD fora do padrão**: Não consegue identificar cabeçalho ou transformar dados
 - **Conteúdo não processado**: Arquivo corrompido ou com rótulo de confidencialidade
-- **Linhas incompletas**: Células obrigatórias sem preenchimento
-- **Nome de arquivo inválido**: Não segue padrão LD_*_REV_*.xlsx ou DF_*_REV_*.xlsx
+- **Linhas incompletas**: Células obrigatórias sem preenchimento (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
+- **Nome de arquivo inválido**: Não segue padrão LD_*_REV_*.xlsx ou DF_*_REV_*.xlsx (mas não bloqueia processamento - apenas extrai do conteúdo)
+
+### Extração de LD e Revisão (ProcessarNomeERevisao)
+- Extrair de 3 fontes (em ordem de prioridade):
+  1. **Nome do arquivo**: Usar regex para padrões `LD-8001PZ-F-XXXXX_REV_N` ou `DF-LD-8001PZ-F-XXXXX_REV_N`
+  2. **Folha CAPA/ROSTO**: Buscar no conteúdo da folha de capa/rosto (se existir)
+  3. **Folha principal da LD**: Buscar no conteúdo da folha principal
+- Aceitar padrões iniciando com `DF-LD-` ou `LD-`
+- Se valor não encontrado em uma fonte, desconsiderar (não tratar como null/undefined)
+- Validar consistência: Se múltiplas fontes retornam valores diferentes, adicionar erro de inconsistência
+- Retornar informações detalhadas: `ldsEncontradas[]` e `revisoesEncontradas[]` com fonte e valor para cada uma
+- Exibir informações detalhadas na interface principal (botão "Ver Detalhes ProcessarNomeERevisao" na tabela de status)
 
 ### Extração de Disciplina
 - Extrair do número do vale usando lógica:
@@ -50,6 +75,8 @@ Este projeto é um aplicativo standalone para processamento de Listas de Documen
 - Usar JavaScript ES6+ com suporte a navegadores modernos
 - Tratamento de erros robusto com mensagens claras
 - Validação de dados em cada etapa do processamento
+- ProcessarNomeERevisao deve ser executado ANTES de identificar cabeçalho (não depende do cabeçalho estar presente)
+- Transformação de cabeçalho deve seguir lógica do Power Query: FillDown + combinação com índice para células mescladas
 
 ### Testes
 - Testar com arquivos reais de exemplo

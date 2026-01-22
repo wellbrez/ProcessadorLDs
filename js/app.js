@@ -121,6 +121,7 @@ async function processarArquivos() {
     return;
   }
   
+  const modoTeste = document.getElementById('chkModoTeste').checked;
   btnProcessar.disabled = true;
   progressContainer.classList.add('active');
   resultadosProcessamento = [];
@@ -134,6 +135,25 @@ async function processarArquivos() {
       
       const resultado = await processarArquivo(arquivo);
       resultadosProcessamento.push(resultado);
+      
+      // Se modo teste, exibir informações de extração
+      if (modoTeste) {
+        console.log(`\n=== Teste de Extração: ${arquivo.name} ===`);
+        console.log(`LD Extraído: ${resultado.ld || '(não encontrado)'}`);
+        console.log(`Revisão Extraída: ${resultado.revisao || '(não encontrada)'}`);
+        
+        // Extrair esperado do nome do arquivo para comparação
+        const match = arquivo.name.match(/LD-8001PZ-F-(\d+)_REV_(\w+)_/);
+        if (match) {
+          const ldEsperado = `LD_${match[1]}`;
+          const revisaoEsperada = match[2];
+          console.log(`LD Esperado: ${ldEsperado}`);
+          console.log(`Revisão Esperada: ${revisaoEsperada}`);
+          console.log(`LD Correto: ${resultado.ld === ldEsperado ? '✅' : '❌'}`);
+          console.log(`Revisão Correta: ${resultado.revisao === revisaoEsperada ? '✅' : '❌'}`);
+        }
+        console.log('=========================================\n');
+      }
     }
     
     // Validar resultados
@@ -141,6 +161,11 @@ async function processarArquivos() {
     
     // Exibir resultados
     exibirResultados();
+    
+    // Se modo teste, exibir resumo no console
+    if (modoTeste) {
+      exibirResumoTeste();
+    }
     
     atualizarProgresso(100, 'Processamento concluído!');
     
@@ -155,6 +180,48 @@ async function processarArquivos() {
   } finally {
     btnProcessar.disabled = false;
   }
+}
+
+/**
+ * @swagger
+ * Exibe resumo dos testes de extração no console
+ */
+function exibirResumoTeste() {
+  console.log('\n📊 RESUMO DOS TESTES DE EXTRAÇÃO');
+  console.log('='.repeat(60));
+  
+  let sucessos = 0;
+  let parcial = 0;
+  let erros = 0;
+  let fonteConteudoLD = 0;
+  let fonteNomeLD = 0;
+  
+  resultadosProcessamento.forEach(resultado => {
+    if (resultado.erro) {
+      erros++;
+      return;
+    }
+    
+    const match = resultado.nomeArquivo.match(/LD-8001PZ-F-(\d+)_REV_(\w+)_/);
+    if (match) {
+      const ldEsperado = `LD_${match[1]}`;
+      const revisaoEsperada = match[2];
+      const ldCorreto = resultado.ld === ldEsperado;
+      const revisaoCorreta = resultado.revisao === revisaoEsperada;
+      
+      if (ldCorreto && revisaoCorreta) {
+        sucessos++;
+      } else {
+        parcial++;
+      }
+    }
+  });
+  
+  console.log(`Total de arquivos: ${resultadosProcessamento.length}`);
+  console.log(`✅ Sucessos completos: ${sucessos}`);
+  console.log(`⚠️  Extrações parciais: ${parcial}`);
+  console.log(`❌ Erros: ${erros}`);
+  console.log('='.repeat(60) + '\n');
 }
 
 /**
@@ -240,17 +307,294 @@ function exibirStatus() {
       statusClass = 'status-error';
     }
     
+    // Buscar informações detalhadas do ProcessarNomeERevisao e processamento
+    const resultado = resultadosProcessamento.find(r => r.nomeArquivo === status.nomeArquivo);
+    const infoProcessarNomeERevisao = resultado?.processarNomeERevisao;
+    const detalhesProcessamento = resultado?.detalhesProcessamento;
+    
+    // Criar botão para abrir modal de detalhes
+    let btnToggleHtml = '';
+    if (infoProcessarNomeERevisao) {
+      btnToggleHtml = '<button class="btn-toggle-detalhes">Ver Detalhes</button>';
+    }
+    
     tr.innerHTML = `
-      <td>${status.nomeArquivo}</td>
+      <td>
+        <div style="font-weight: 500; display: flex; align-items: center; gap: 12px;">
+          <span>${status.nomeArquivo}</span>
+          ${btnToggleHtml}
+        </div>
+      </td>
       <td><span class="status-badge ${statusClass}">${status.status}</span></td>
-      <td>${status.totalLinhas}</td>
-      <td>${status.linhasValidas}</td>
-      <td>${status.linhasIncompletas}</td>
     `;
+    
+    // Adicionar evento para abrir modal com detalhes
+    const btnToggle = tr.querySelector('.btn-toggle-detalhes');
+    if (btnToggle && infoProcessarNomeERevisao) {
+      btnToggle.addEventListener('click', function() {
+        abrirModalDetalhes(status.nomeArquivo, infoProcessarNomeERevisao, detalhesProcessamento);
+      });
+    }
     
     tbody.appendChild(tr);
   });
 }
+
+/**
+ * @swagger
+ * Abre modal com detalhes do processamento
+ */
+function abrirModalDetalhes(nomeArquivo, infoProcessarNomeERevisao, detalhesProcessamento) {
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalContent = document.getElementById('modalContent');
+  const modalTitle = document.querySelector('.modal-title');
+  
+  // Atualizar título do modal
+  modalTitle.textContent = `Detalhes: ${nomeArquivo}`;
+  
+  // Verificar se há inconsistência nas LDs
+  const ldsValoresUnicos = infoProcessarNomeERevisao.ldsEncontradas.length > 1
+    ? [...new Set(infoProcessarNomeERevisao.ldsEncontradas.map(l => l.valor))]
+    : [];
+  const temInconsistenciaLD = ldsValoresUnicos.length > 1;
+  
+  // Verificar se há inconsistência nas Revisões
+  const revsValoresUnicos = infoProcessarNomeERevisao.revisoesEncontradas.length > 1
+    ? [...new Set(infoProcessarNomeERevisao.revisoesEncontradas.map(r => r.valor))]
+    : [];
+  const temInconsistenciaRevisao = revsValoresUnicos.length > 1;
+  
+  // Construir conteúdo do modal
+  const ldsInfo = infoProcessarNomeERevisao.ldsEncontradas.length > 0 
+    ? infoProcessarNomeERevisao.ldsEncontradas.map(ld => {
+        const cor = temInconsistenciaLD ? 'error' : 'success';
+        return `<li><span class="${cor}">${ld.fonte}: <strong>${ld.valor}</strong></span></li>`;
+      }).join('')
+    : '<li>Nenhuma LD encontrada</li>';
+  const revsInfo = infoProcessarNomeERevisao.revisoesEncontradas.length > 0
+    ? infoProcessarNomeERevisao.revisoesEncontradas.map(rev => {
+        const cor = temInconsistenciaRevisao ? 'error' : 'success';
+        return `<li><span class="${cor}">${rev.fonte}: <strong>${rev.valor}</strong></span></li>`;
+      }).join('')
+    : '<li>Nenhuma revisão encontrada</li>';
+  
+  // Adicionar aviso se houver inconsistência
+  let avisoInconsistencia = '';
+  if (temInconsistenciaLD || temInconsistenciaRevisao) {
+    const avisos = [];
+    if (temInconsistenciaLD) {
+      avisos.push('⚠️ <strong>Inconsistência de LD:</strong> Valores diferentes encontrados nas fontes.');
+    }
+    if (temInconsistenciaRevisao) {
+      avisos.push('⚠️ <strong>Inconsistência de Revisão:</strong> Valores diferentes encontrados nas fontes.');
+    }
+    avisoInconsistencia = `
+      <div style="margin-top: 16px; padding: 12px; background: #fff3cd; border-left: 4px solid var(--color-warning); border-radius: 4px;">
+        ${avisos.join('<br>')}
+      </div>
+    `;
+  }
+  
+  let detalhesProcessamentoHtml = '';
+  if (detalhesProcessamento) {
+    const colunasObrigatoriasInfo = `${detalhesProcessamento.colunasObrigatoriasEncontradas} / ${detalhesProcessamento.totalColunasObrigatorias}`;
+    const colunasObrigatoriasClass = detalhesProcessamento.colunasObrigatoriasEncontradas === detalhesProcessamento.totalColunasObrigatorias ? 'success' : 'warning';
+    
+    let colunasAdicionaisHtml = '';
+    if (detalhesProcessamento.colunasAdicionais && detalhesProcessamento.colunasAdicionais.length > 0) {
+      colunasAdicionaisHtml = `
+        <div class="colunas-adicionais-box">
+          <div class="detalhes-item-label">Colunas Adicionais (${detalhesProcessamento.colunasAdicionais.length})</div>
+          <div class="colunas-adicionais-tags">
+            ${detalhesProcessamento.colunasAdicionais.map(col => `<span class="colunas-adicionais-tag">${col}</span>`).join('')}
+          </div>
+        </div>
+      `;
+    }
+    
+    const percentualClass = detalhesProcessamento.percentualValidas >= 90 ? 'success' : detalhesProcessamento.percentualValidas >= 50 ? 'warning' : 'error';
+    const totalLinhas = detalhesProcessamento.linhasValidas + detalhesProcessamento.linhasInvalidas;
+    
+    detalhesProcessamentoHtml = `
+      <div class="detalhes-section">
+        <div class="detalhes-section-title">📊 Estatísticas de Processamento</div>
+        <div class="detalhes-grid">
+          <div class="detalhes-item">
+            <div class="detalhes-item-label">Colunas Processadas</div>
+            <div class="detalhes-item-value">
+              <span class="${colunasObrigatoriasClass}">${colunasObrigatoriasInfo}</span>
+              ${detalhesProcessamento.colunasObrigatoriasFaltando && detalhesProcessamento.colunasObrigatoriasFaltando.length > 0 
+                ? `<br><small style="color: var(--color-error); font-size: 0.85em;">Faltando: ${detalhesProcessamento.colunasObrigatoriasFaltando.join(', ')}</small>` 
+                : ''}
+            </div>
+          </div>
+          <div class="detalhes-item">
+            <div class="detalhes-item-label">Total de Linhas</div>
+            <div class="detalhes-item-value">${totalLinhas}</div>
+          </div>
+          <div class="detalhes-item">
+            <div class="detalhes-item-label">Linhas Válidas</div>
+            <div class="detalhes-item-value"><span class="success">${detalhesProcessamento.linhasValidas}</span></div>
+          </div>
+          <div class="detalhes-item">
+            <div class="detalhes-item-label">Linhas Inválidas</div>
+            <div class="detalhes-item-value"><span class="error">${detalhesProcessamento.linhasInvalidas}</span></div>
+          </div>
+          <div class="detalhes-item">
+            <div class="detalhes-item-label">Percentual de Validade</div>
+            <div class="detalhes-item-value"><span class="${percentualClass}">${detalhesProcessamento.percentualValidas}%</span></div>
+          </div>
+        </div>
+        ${colunasAdicionaisHtml}
+      </div>
+    `;
+  }
+  
+  // Tabela de linhas com erro
+  let tabelaErrosHtml = '';
+  if (detalhesProcessamento && detalhesProcessamento.linhasComErro && detalhesProcessamento.linhasComErro.length > 0) {
+    const colunasObrigatorias = ['NO VALE', 'PREVISTO', 'PREVISTO 1', 'PREVISTO 2', 'FORMATO', 'PAGS/ FOLHAS', 'Disciplina', 'DataPrevisto'];
+    
+    tabelaErrosHtml = `
+      <div class="detalhes-section tabela-erros-container">
+        <div class="tabela-erros-header">
+          ❌ Linhas com Erro (${detalhesProcessamento.linhasComErro.length}${detalhesProcessamento.linhasComErro.length >= 100 ? '+' : ''})
+        </div>
+        <div class="tabela-erros-wrapper">
+          <table class="tabela-erros">
+            <thead>
+              <tr>
+                <th>Linha</th>
+                ${colunasObrigatorias.map(col => `<th>${col}</th>`).join('')}
+                <th>Erros</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${detalhesProcessamento.linhasComErro.map(linhaErro => {
+                const camposComErroSet = new Set(linhaErro.camposComErro);
+                const temErros = linhaErro.erros.length > 0;
+                return `
+                  <tr class="${temErros ? 'erro-linha' : ''}">
+                    <td style="font-weight: 600;">${linhaErro.numeroLinha}</td>
+                    ${colunasObrigatorias.map(col => {
+                      const valor = linhaErro.dados[col];
+                      const temErro = camposComErroSet.has(col);
+                      let displayValor = '';
+                      let classes = '';
+                      
+                      if (valor === null || valor === undefined) {
+                        displayValor = '(null)';
+                        classes = 'celula-erro-null';
+                      } else if (valor === '') {
+                        displayValor = '(vazio)';
+                        classes = 'celula-erro-null';
+                      } else if (valor instanceof Date) {
+                        displayValor = valor.toLocaleDateString('pt-BR');
+                      } else {
+                        const strValor = String(valor);
+                        displayValor = strValor.length > 30 ? strValor.substring(0, 30) + '...' : strValor;
+                      }
+                      
+                      if (temErro) {
+                        classes += ' celula-erro';
+                      }
+                      
+                      return `<td class="${classes}">${displayValor}</td>`;
+                    }).join('')}
+                    <td>
+                      <ul class="lista-erros">
+                        ${linhaErro.erros.map(erro => `<li>${erro}</li>`).join('')}
+                      </ul>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+  
+  // Montar conteúdo completo
+  const conteudoModal = `
+    <div class="processar-nome-revisao-detalhes">
+      <div class="detalhes-content">
+        <div class="detalhes-section">
+          <div class="detalhes-section-title">🔍 Identificação da LD</div>
+          <div class="detalhes-grid">
+            <div class="detalhes-item">
+              <div class="detalhes-item-label">LD Final</div>
+              <div class="detalhes-item-value">
+                <span class="${infoProcessarNomeERevisao.ldFinal ? 'success' : 'error'}">
+                  ${infoProcessarNomeERevisao.ldFinal || '(não encontrado)'}
+                </span>
+              </div>
+            </div>
+            <div class="detalhes-item">
+              <div class="detalhes-item-label">Revisão Final</div>
+              <div class="detalhes-item-value">
+                <span class="${infoProcessarNomeERevisao.revisaoFinal ? 'success' : 'error'}">
+                  ${infoProcessarNomeERevisao.revisaoFinal || '(não encontrada)'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top: 16px;">
+            <div class="detalhes-item-label" style="margin-bottom: 8px;">Fontes LD encontradas (${infoProcessarNomeERevisao.totalFontesLD})</div>
+            <ul class="detalhes-lista">${ldsInfo}</ul>
+          </div>
+          <div style="margin-top: 16px;">
+            <div class="detalhes-item-label" style="margin-bottom: 8px;">Fontes Revisão encontradas (${infoProcessarNomeERevisao.totalFontesRevisao})</div>
+            <ul class="detalhes-lista">${revsInfo}</ul>
+          </div>
+          ${avisoInconsistencia}
+        </div>
+        ${detalhesProcessamentoHtml}
+        ${tabelaErrosHtml}
+      </div>
+    </div>
+  `;
+  
+  modalContent.innerHTML = conteudoModal;
+  modalOverlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden'; // Prevenir scroll do body
+}
+
+/**
+ * @swagger
+ * Fecha o modal de detalhes
+ */
+function fecharModalDetalhes() {
+  const modalOverlay = document.getElementById('modalOverlay');
+  modalOverlay.style.display = 'none';
+  document.body.style.overflow = ''; // Restaurar scroll do body
+}
+
+// Event listeners para fechar modal
+document.addEventListener('DOMContentLoaded', function() {
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalClose = document.getElementById('modalClose');
+  
+  if (modalClose) {
+    modalClose.addEventListener('click', fecharModalDetalhes);
+  }
+  
+  if (modalOverlay) {
+    modalOverlay.addEventListener('click', function(e) {
+      if (e.target === modalOverlay) {
+        fecharModalDetalhes();
+      }
+    });
+    
+    // Fechar com ESC
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && modalOverlay.style.display !== 'none') {
+        fecharModalDetalhes();
+      }
+    });
+  }
+});
 
 /**
  * @swagger

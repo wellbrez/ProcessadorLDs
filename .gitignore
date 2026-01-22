@@ -21,8 +21,13 @@ test-data/
 *.xlsx
 *.xls
 *.csv
-!exemplos/*.csv
-!exemplos/*.xlsx
+# Exemplos de LDs (arquivos de entrada)
+LD-*.xlsx
+LD-*.xls
+LD-*.csv
+DF-*.xlsx
+DF-*.xls
+DF-*.csv
 
 # Arquivos de saída gerados
 output/

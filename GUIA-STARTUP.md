@@ -1,5 +1,8 @@
 # GUIA-STARTUP.md - ProcessadorLDs
 
+**Autor:** Wellington Bravin  
+**Data:** 21/01/2026
+
 ## Guia de Inicialização
 
 Este guia fornece instruções para iniciar e usar o ProcessadorLDs pela primeira vez.
@@ -62,7 +65,12 @@ A interface exibirá:
 - **Estatísticas**: Total de arquivos, processados, com erro
 - **Dados Processados**: Tabela com dados extraídos
 - **Status por Arquivo**: Status de cada LD processada
-- **Problemas**: Lista de problemas encontrados
+  - Cada arquivo possui um botão "Ver Detalhes ProcessarNomeERevisao" que mostra:
+    - LD Final e Revisão Final extraídas
+    - Lista de todas as fontes LD encontradas (Nome arquivo, CAPA/ROSTO, Folha LD)
+    - Lista de todas as fontes de Revisão encontradas
+    - Contadores de quantas fontes foram encontradas
+- **Problemas**: Lista de problemas encontrados (incluindo inconsistências de LD/Revisão)
 
 ### 5. Exportar Resultados
 
@@ -81,62 +89,71 @@ A interface exibirá:
 O arquivo LD deve conter:
 
 1. **Cabeçalho**: Linha contendo "NO VALE" ou "VALE DOCUMENT NUMBER"
+   - O cabeçalho pode ter células mescladas (ex: "PREVISTO" cobrindo 3 colunas)
+   - O sistema automaticamente transforma células mescladas em PREVISTO, PREVISTO 1, PREVISTO 2
 2. **Colunas**: As seguintes colunas devem estar presentes:
    - NO VALE (obrigatório)
-   - PREVISTO (obrigatório)
-   - PREVISTO 1 (obrigatório)
-   - PREVISTO 2 (obrigatório)
-   - REPROGRAMADO (opcional)
-   - REPROGRAMADO 1 (opcional)
-   - REPROGRAMADO 2 (opcional)
-   - REALIZADO (opcional)
-   - REALIZADO 1 (opcional)
-   - REALIZADO 2 (opcional)
+   - PREVISTO (obrigatório) - pode vir de célula mesclada
+   - PREVISTO 1 (obrigatório) - pode vir de célula mesclada
+   - PREVISTO 2 (obrigatório) - pode vir de célula mesclada, usado para gerar DataPrevisto
+   - REPROGRAMADO (opcional) - pode vir de célula mesclada
+   - REPROGRAMADO 1 (opcional) - pode vir de célula mesclada
+   - REPROGRAMADO 2 (opcional) - pode vir de célula mesclada
+   - REALIZADO (opcional) - pode vir de célula mesclada
+   - REALIZADO 1 (opcional) - pode vir de célula mesclada
+   - REALIZADO 2 (opcional) - pode vir de célula mesclada
    - FORMATO (obrigatório)
    - PAGS/ FOLHAS (obrigatório)
-   - AÇÕES (opcional)
+   - AÇÕES (opcional, valores "E" são filtrados)
+   - Disciplina (obrigatório, extraído automaticamente do NO VALE)
+   - DataPrevisto (obrigatório, convertido automaticamente de PREVISTO 2)
 
 ### Nome do Arquivo
 
-O nome do arquivo deve seguir o padrão:
-- `LD_XXXXX_REV_YY.xlsx` ou
+O nome do arquivo pode seguir padrões como:
+- `LD-8001PZ-F-XXXXX_REV_N_NOME.xlsx`
+- `DF-LD-8001PZ-F-XXXXX_REV_N_NOME.xlsx`
+- `LD_XXXXX_REV_YY.xlsx`
 - `DF_XXXXX_REV_YY.xlsx`
 
-Onde:
-- `XXXXX`: Identificador da LD
-- `YY`: Número da revisão
+**Nota**: O sistema extrai LD e revisão do nome do arquivo, mas também busca no conteúdo (CAPA/ROSTO e folha principal). Se houver inconsistência entre as fontes, será reportado como problema.
 
 **Exemplos válidos:**
-- `LD_001_REV_01.xlsx`
-- `DF_123_REV_05.xlsx`
+- `LD-8001PZ-F-11046_REV_10_ATKINS.xlsx`
+- `LD-8001PZ-F-11047_REV_0_JOTAELE.xlsx`
+- `DF-LD-8001PZ-F-11050_REV_5_EXEMPLO.xlsx`
 
 ## Problemas Comuns
 
 ### Arquivo não é processado
 
 **Possíveis causas:**
-1. Nome do arquivo não segue o padrão
-2. Cabeçalho "NO VALE" não encontrado
-3. Arquivo corrompido
-4. Formato não suportado
+1. Cabeçalho "NO VALE" não encontrado
+2. Arquivo corrompido
+3. Formato não suportado
+4. Células mescladas no cabeçalho não estão sendo processadas corretamente
 
 **Soluções:**
-1. Verifique o nome do arquivo
-2. Verifique se o cabeçalho existe
+1. Verifique se o cabeçalho "NO VALE" existe na planilha
+2. Verifique se há células mescladas no cabeçalho (o sistema deve processá-las automaticamente)
 3. Tente abrir o arquivo no Excel para verificar se está íntegro
 4. Certifique-se de que é CSV ou XLSX
+5. Use o botão "Ver Detalhes ProcessarNomeERevisao" para verificar se LD e revisão foram extraídas corretamente
 
 ### Dados não aparecem
 
 **Possíveis causas:**
 1. Todas as linhas foram filtradas (AÇÕES = "E")
-2. Dados obrigatórios não preenchidos
-3. Formato de data inválido
+2. Dados obrigatórios não preenchidos (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
+3. Formato de data inválido em PREVISTO 2
+4. Células mescladas no cabeçalho não foram transformadas corretamente
 
 **Soluções:**
 1. Verifique se há linhas com AÇÕES diferente de "E"
 2. Verifique se todas as colunas obrigatórias estão preenchidas
-3. Verifique se as datas estão no formato dd/MM/yyyy
+3. Verifique se PREVISTO 2 está no formato dd/MM/yyyy (usado para gerar DataPrevisto)
+4. Verifique se o cabeçalho tem células mescladas e se foram processadas corretamente
+5. Consulte os detalhes do ProcessarNomeERevisao para verificar extração de LD e revisão
 
 ### Erro ao exportar
 

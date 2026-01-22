@@ -11,12 +11,26 @@
   
   <!-- PapaParse para processamento de CSV -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  
+  <script>
+    // Auto-ativar modo teste se houver parâmetro na URL
+    window.addEventListener('DOMContentLoaded', function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('teste') === 'true') {
+        const chk = document.getElementById('chkModoTeste');
+        if (chk) {
+          chk.checked = true;
+          console.log('✅ Modo teste ativado automaticamente');
+        }
+      }
+    });
+  </script>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>📄 ProcessadorLDs</h1>
-      <p>Processamento de Listas de Documentos (LDs)</p>
+      <p>Processamento e Validação de Listas de Documentos</p>
     </header>
     
     <main>
@@ -28,6 +42,13 @@
           <div class="upload-text">Arraste arquivos aqui ou clique para selecionar</div>
           <div class="upload-hint">Formatos suportados: CSV, XLSX</div>
           <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls">
+        </div>
+        <div class="modo-teste-container">
+          <label>
+            <input type="checkbox" id="chkModoTeste">
+            <strong>Modo Teste:</strong>
+            <span>Mostrar detalhes de extração de LD e Revisão</span>
+          </label>
         </div>
         <div class="buttons-group">
           <button class="btn btn-primary" id="btnProcessar" disabled>Processar</button>
@@ -57,15 +78,25 @@
               <tr>
                 <th>Arquivo</th>
                 <th>Status</th>
-                <th>Total de Linhas</th>
-                <th>Linhas Válidas</th>
-                <th>Linhas Incompletas</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
       </section>
+      
+      <!-- Modal de Detalhes -->
+      <div class="modal-overlay" id="modalOverlay" style="display: none;">
+        <div class="modal-container">
+          <div class="modal-header">
+            <h2 class="modal-title">Detalhes do Processamento</h2>
+            <button class="modal-close" id="modalClose">&times;</button>
+          </div>
+          <div class="modal-content" id="modalContent">
+            <!-- Conteúdo será inserido aqui via JavaScript -->
+          </div>
+        </div>
+      </div>
       
       <!-- Problemas -->
       <section class="section hidden" id="sectionProblemas">

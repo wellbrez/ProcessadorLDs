@@ -1,5 +1,8 @@
 # PROJETO.md - ProcessadorLDs
 
+**Autor:** Wellington Bravin  
+**Data:** 21/01/2026
+
 ## Visão Geral
 
 O ProcessadorLDs é um aplicativo standalone desenvolvido para processar Listas de Documentos (LDs) de forma automatizada, substituindo o processo manual realizado anteriormente via Power Query.
@@ -63,15 +66,26 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
 ## Fluxo de Processamento
 
 1. **Entrada**: Usuário seleciona um ou mais arquivos de LD
-2. **Leitura**: Sistema lê o arquivo e identifica o formato
-3. **Identificação**: Localiza o cabeçalho "NO VALE" ou "VALE DOCUMENT NUMBER"
-4. **Transformação**: Normaliza e limpa os dados
-5. **Extração**: Extrai colunas relevantes e disciplina
-6. **Filtragem**: Remove linhas com AÇÕES = "E"
-7. **Validação**: Verifica dados obrigatórios
-8. **Consolidação**: Agrupa dados de múltiplas LDs
-9. **Relatório**: Gera status e lista de problemas
-10. **Exportação**: Permite exportar resultados
+2. **Leitura**: Sistema lê o arquivo e identifica o formato (Excel ou CSV)
+3. **ProcessarNomeERevisao** (executado ANTES de identificar cabeçalho):
+   - Extrai LD e revisão do nome do arquivo (regex)
+   - Extrai LD e revisão da folha CAPA/ROSTO (se existir)
+   - Extrai LD e revisão da folha principal da LD
+   - Valida consistência entre as fontes encontradas
+   - Retorna informações detalhadas para log/relatório
+4. **Identificação**: Localiza o cabeçalho "NO VALE" ou "VALE DOCUMENT NUMBER"
+5. **Transformação do Cabeçalho** (lógica do Power Query):
+   - Aplica FillDown para células mescladas (preenche células vazias com valor acima)
+   - Combina com índice para criar "PREVISTO 0", "PREVISTO 1", "PREVISTO 2" a partir de célula mesclada
+   - Converte usando tabela: "PREVISTO 0" → "PREVISTO", "PREVISTO 1" → "PREVISTO 1", etc.
+6. **Transformação**: Normaliza e limpa os dados
+7. **Extração**: Extrai colunas relevantes e disciplina
+8. **Conversão**: Converte PREVISTO 2 para DataPrevisto (objeto Date)
+9. **Filtragem**: Remove linhas com AÇÕES = "E"
+10. **Validação**: Verifica dados obrigatórios (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
+11. **Consolidação**: Agrupa dados de múltiplas LDs
+12. **Relatório**: Gera status e lista de problemas, incluindo informações detalhadas do ProcessarNomeERevisao
+13. **Exportação**: Permite exportar resultados
 
 ## Dados de Entrada
 
@@ -84,18 +98,20 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
 ### Colunas Esperadas
 
 - NO VALE (obrigatório)
-- PREVISTO (obrigatório)
-- PREVISTO 1 (obrigatório)
-- PREVISTO 2 (obrigatório)
-- REPROGRAMADO (opcional)
-- REPROGRAMADO 1 (opcional)
-- REPROGRAMADO 2 (opcional)
-- REALIZADO (opcional)
-- REALIZADO 1 (opcional)
-- REALIZADO 2 (opcional)
+- PREVISTO (obrigatório) - pode vir de célula mesclada no cabeçalho
+- PREVISTO 1 (obrigatório) - pode vir de célula mesclada no cabeçalho
+- PREVISTO 2 (obrigatório) - pode vir de célula mesclada no cabeçalho, usado para gerar DataPrevisto
+- REPROGRAMADO (opcional) - pode vir de célula mesclada no cabeçalho
+- REPROGRAMADO 1 (opcional) - pode vir de célula mesclada no cabeçalho
+- REPROGRAMADO 2 (opcional) - pode vir de célula mesclada no cabeçalho
+- REALIZADO (opcional) - pode vir de célula mesclada no cabeçalho
+- REALIZADO 1 (opcional) - pode vir de célula mesclada no cabeçalho
+- REALIZADO 2 (opcional) - pode vir de célula mesclada no cabeçalho
 - FORMATO (obrigatório)
 - PAGS/ FOLHAS (obrigatório)
 - AÇÕES (opcional, valores "E" são filtrados)
+- Disciplina (obrigatório, extraído do NO VALE)
+- DataPrevisto (obrigatório, convertido de PREVISTO 2)
 
 ## Dados de Saída
 
@@ -111,17 +127,40 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
   },
   "dados": [
     {
-      "nomeArquivo": "LD_001_REV_01.xlsx",
-      "revisao": "01",
-      "ld": "LD_001",
-      "noVale": "123456-7-A",
-      "previsto": "01/01/2025",
-      "previsto1": "Janeiro",
-      "previsto2": "2025-01-01",
-      "reprogramado": null,
-      "formato": "PDF",
-      "paginas": "10",
-      "disciplina": "A"
+      "nomeArquivo": "LD-8001PZ-F-11047_REV_0_JOTAELE.xlsx",
+      "ld": "LD_8001PZ-F-11047",
+      "revisao": "0",
+      "processarNomeERevisao": {
+        "ldsEncontradas": [
+          { "fonte": "Nome do arquivo", "valor": "LD_8001PZ-F-11047" },
+          { "fonte": "Folha CAPA/ROSTO", "valor": "LD_8001PZ-F-11047" },
+          { "fonte": "Folha da LD", "valor": "LD_8001PZ-F-11047" }
+        ],
+        "revisoesEncontradas": [
+          { "fonte": "Nome do arquivo", "valor": "0" },
+          { "fonte": "Folha CAPA/ROSTO", "valor": "0" },
+          { "fonte": "Folha da LD", "valor": "0" }
+        ],
+        "totalFontesLD": 3,
+        "totalFontesRevisao": 3,
+        "ldFinal": "LD_8001PZ-F-11047",
+        "revisaoFinal": "0"
+      },
+      "dados": [
+        {
+          "NO VALE": "123456-7-A",
+          "PREVISTO": "01/01/2025",
+          "PREVISTO 1": "Janeiro",
+          "PREVISTO 2": "01/01/2025",
+          "DataPrevisto": "2025-01-01T00:00:00.000Z",
+          "REPROGRAMADO": null,
+          "FORMATO": "PDF",
+          "PAGS/ FOLHAS": "10",
+          "Disciplina": "A"
+        }
+      ],
+      "totalLinhas": 100,
+      "linhasProcessadas": 95
     }
   ],
   "problemas": [
@@ -129,6 +168,11 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
       "arquivo": "LD_002_REV_01.xlsx",
       "tipo": "Linhas incompletas",
       "mensagem": "5 linhas possuem células obrigatórias sem preenchimento"
+    },
+    {
+      "arquivo": "LD_003_REV_02.xlsx",
+      "tipo": "Inconsistência de Revisão",
+      "mensagem": "Revisão encontrada em múltiplas fontes com valores diferentes: Nome do arquivo=\"2\", Folha da LD=\"3\". Verifique se o documento está atualizado."
     }
   ]
 }
@@ -167,11 +211,19 @@ Arquivo XLSX com:
    - Não segue padrão LD_*_REV_*.xlsx ou DF_*_REV_*.xlsx
    - Mensagem: "Nome de arquivo inválido. Verifique nome e Extensão"
 
-5. **Linhas Incompletas**
+5. **Inconsistência de LD**
+   - LD encontrada em múltiplas fontes com valores diferentes
+   - Mensagem: "LD encontrada em múltiplas fontes com valores diferentes: [fonte1]=\"valor1\", [fonte2]=\"valor2\". Verifique se o documento está atualizado."
+
+6. **Inconsistência de Revisão**
+   - Revisão encontrada em múltiplas fontes com valores diferentes
+   - Mensagem: "Revisão encontrada em múltiplas fontes com valores diferentes: [fonte1]=\"valor1\", [fonte2]=\"valor2\". Verifique se o documento está atualizado."
+
+7. **Linhas Incompletas**
    - Células obrigatórias sem preenchimento
    - Mensagem: "X linhas possuem células obrigatórias sem preenchimento"
 
-6. **Nenhuma Linha Contabilizada**
+8. **Nenhuma Linha Contabilizada**
    - Nenhuma linha válida após filtros
    - Mensagem: "Nenhuma linha foi contabilizada, verifique se está no formato adequado e se o 'previsto' está preenchido corretamente, com datas válidas dd/MM/yyyy"
 
