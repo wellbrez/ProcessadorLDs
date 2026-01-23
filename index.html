@@ -31,40 +31,22 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   
   <script>
-    // Verificar se XLSX está disponível após carregar bibliotecas
-    // Aguardar um pouco para garantir que os scripts foram carregados
     window.addEventListener('DOMContentLoaded', function() {
-      // Aguardar um pouco para garantir que os scripts foram carregados
       setTimeout(function() {
         if (typeof XLSX === 'undefined') {
-          console.error('❌ XLSX não está definido após carregar bibliotecas.');
-          console.log('Tentando carregar SheetJS original como fallback...');
-          
-          // Fallback: carregar SheetJS original
           const script = document.createElement('script');
           script.src = 'https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js';
-          script.onload = function() {
-            console.log('✅ SheetJS original carregado como fallback (sem suporte a formatação)');
-            alert('Aviso: Biblioteca xlsx-js-style não carregou. Usando SheetJS original. A formatação de células com erro não estará disponível, mas a exportação funcionará.');
-          };
           script.onerror = function() {
-            console.error('❌ Falha ao carregar SheetJS original também');
-            alert('Erro crítico: Não foi possível carregar nenhuma biblioteca XLSX. Verifique sua conexão com a internet e recarregue a página.');
+            alert('Erro: Não foi possível carregar a biblioteca XLSX. Verifique sua conexão com a internet e recarregue a página.');
           };
           document.head.appendChild(script);
-        } else {
-          console.log('✅ Biblioteca XLSX carregada com sucesso');
         }
-      }, 500); // Aguardar 500ms para scripts carregarem
+      }, 500);
       
-      // Auto-ativar modo teste se houver parâmetro na URL
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get('teste') === 'true') {
         const chk = document.getElementById('chkModoTeste');
-        if (chk) {
-          chk.checked = true;
-          console.log('✅ Modo teste ativado automaticamente');
-        }
+        if (chk) chk.checked = true;
       }
     });
   </script>

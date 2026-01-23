@@ -509,12 +509,7 @@ function transformarDados(dadosBrutos, indiceCabecalho) {
   // (Já temos cabecalhoNormalizado como array, que é equivalente)
   
   // DEBUG: Verificar se cabeçalho tem todas as colunas necessárias
-  const colunasEsperadas = ['NO VALE', 'PREVISTO', 'PREVISTO 1', 'PREVISTO 2', 'FORMATO', 'PAGS/ FOLHAS'];
-  const colunasFaltando = colunasEsperadas.filter(col => !cabecalhoNormalizado.includes(col));
-  if (colunasFaltando.length > 0) {
-    console.warn('Cabeçalho processado não contém todas as colunas esperadas. Faltando:', colunasFaltando);
-    console.log('Cabeçalho processado:', cabecalhoNormalizado);
-  }
+  // Validação silenciosa - colunas faltando serão detectadas na validação
   
   // 11. JuntarCabecalhoPlanilha - Combinar cabeçalho processado com dados
   // No Power Query: if Text.Contains(ResultadoFinal{1}[Column1] ?? "", "-") then Table.Skip(ResultadoFinal, 1) else Table.Skip(ResultadoFinal, 2)

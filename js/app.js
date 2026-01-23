@@ -136,23 +136,12 @@ async function processarArquivos() {
       const resultado = await processarArquivo(arquivo);
       resultadosProcessamento.push(resultado);
       
-      // Se modo teste, exibir informações de extração
-      if (modoTeste) {
-        console.log(`\n=== Teste de Extração: ${arquivo.name} ===`);
-        console.log(`LD Extraído: ${resultado.ld || '(não encontrado)'}`);
-        console.log(`Revisão Extraída: ${resultado.revisao || '(não encontrada)'}`);
-        
-        // Extrair esperado do nome do arquivo para comparação
-        const match = arquivo.name.match(/LD-8001PZ-F-(\d+)_REV_(\w+)_/);
-        if (match) {
-          const ldEsperado = `LD_${match[1]}`;
-          const revisaoEsperada = match[2];
-          console.log(`LD Esperado: ${ldEsperado}`);
-          console.log(`Revisão Esperada: ${revisaoEsperada}`);
-          console.log(`LD Correto: ${resultado.ld === ldEsperado ? '✅' : '❌'}`);
-          console.log(`Revisão Correta: ${resultado.revisao === revisaoEsperada ? '✅' : '❌'}`);
-        }
-        console.log('=========================================\n');
+      // Modo teste: informações de extração (apenas se ativado)
+      if (modoTeste && resultado.processarNomeERevisao) {
+        const info = resultado.processarNomeERevisao;
+        console.log(`\n=== ${arquivo.name} ===`);
+        console.log(`LD: ${resultado.ld || '(não encontrado)'} | Revisão: ${resultado.revisao || '(não encontrada)'}`);
+        console.log(`Fontes LD: ${info.totalFontesLD} | Fontes Revisão: ${info.totalFontesRevisao}`);
       }
     }
     
@@ -184,44 +173,16 @@ async function processarArquivos() {
 
 /**
  * @swagger
- * Exibe resumo dos testes de extração no console
+ * Exibe resumo dos testes de extração no console (apenas em modo teste)
  */
 function exibirResumoTeste() {
-  console.log('\n📊 RESUMO DOS TESTES DE EXTRAÇÃO');
-  console.log('='.repeat(60));
+  if (!modoTeste) return;
   
-  let sucessos = 0;
-  let parcial = 0;
-  let erros = 0;
-  let fonteConteudoLD = 0;
-  let fonteNomeLD = 0;
+  const total = resultadosProcessamento.length;
+  const comErro = resultadosProcessamento.filter(r => r.erro).length;
+  const semErro = total - comErro;
   
-  resultadosProcessamento.forEach(resultado => {
-    if (resultado.erro) {
-      erros++;
-      return;
-    }
-    
-    const match = resultado.nomeArquivo.match(/LD-8001PZ-F-(\d+)_REV_(\w+)_/);
-    if (match) {
-      const ldEsperado = `LD_${match[1]}`;
-      const revisaoEsperada = match[2];
-      const ldCorreto = resultado.ld === ldEsperado;
-      const revisaoCorreta = resultado.revisao === revisaoEsperada;
-      
-      if (ldCorreto && revisaoCorreta) {
-        sucessos++;
-      } else {
-        parcial++;
-      }
-    }
-  });
-  
-  console.log(`Total de arquivos: ${resultadosProcessamento.length}`);
-  console.log(`✅ Sucessos completos: ${sucessos}`);
-  console.log(`⚠️  Extrações parciais: ${parcial}`);
-  console.log(`❌ Erros: ${erros}`);
-  console.log('='.repeat(60) + '\n');
+  console.log(`\n📊 Resumo: ${total} arquivos | ${semErro} processados | ${comErro} com erro\n`);
 }
 
 /**
