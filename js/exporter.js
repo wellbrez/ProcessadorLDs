@@ -139,37 +139,49 @@ function exportarXLSX(dados, nomeArquivo = 'dados_processados', linhasComErro = 
         if (col !== undefined) {
           const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
           
-          // Garantir que a célula existe
+          // Garantir que a célula existe e tem valor
           if (!worksheetErros[cellAddress]) {
-            worksheetErros[cellAddress] = { t: 's', v: '' };
+            // Obter o valor original da linha para este campo
+            const valor = linha[campo];
+            worksheetErros[cellAddress] = {
+              t: typeof valor === 'number' ? 'n' : 's',
+              v: valor !== null && valor !== undefined ? valor : ''
+            };
           }
           
-          // Aplicar estilo usando xlsx-js-style (se disponível)
-          // Verificar se a biblioteca suporta formatação (xlsx-js-style)
-          // Se não suportar, a célula será criada sem formatação, mas ainda aparecerá na planilha
-          try {
-            // Formato ARGB: FF (alpha) + RGB(255, 228, 225) = FFFFE4E1
-            worksheetErros[cellAddress].s = {
-              fill: {
-                patternType: 'solid',
-                fgColor: { rgb: 'FFFFE4E1' } // Rosa claro em formato ARGB
-              },
-              font: {
-                color: { rgb: 'FF000000' }, // Texto preto
-                bold: false
-              },
-              alignment: {
-                vertical: 'center',
-                horizontal: 'left'
-              }
-            };
-          } catch (e) {
-            // Se houver erro ao aplicar estilo (biblioteca não suporta), continuar sem formatação
-            console.warn('Formatação de células não suportada pela biblioteca carregada:', e);
+          // Aplicar estilo usando xlsx-js-style
+          // Rosa claro: RGB(255, 228, 225) = #FFE4E1
+          // Formato ARGB: FF (alpha) + FF (red) + E4 (green) + E1 (blue) = FFFFE4E1
+          // Alternativa sem alpha: FFE4E1 (alguns exemplos usam apenas 6 dígitos)
+          if (!worksheetErros[cellAddress].s) {
+            worksheetErros[cellAddress].s = {};
           }
+          
+          worksheetErros[cellAddress].s.fill = {
+            patternType: 'solid',
+            fgColor: { rgb: 'FFFFE4E1' } // Rosa claro em formato ARGB completo
+          };
+          
+          // Garantir que font e alignment também estão definidos
+          if (!worksheetErros[cellAddress].s.font) {
+            worksheetErros[cellAddress].s.font = {};
+          }
+          worksheetErros[cellAddress].s.font.color = { rgb: 'FF000000' }; // Texto preto
+          
+          if (!worksheetErros[cellAddress].s.alignment) {
+            worksheetErros[cellAddress].s.alignment = {};
+          }
+          worksheetErros[cellAddress].s.alignment.vertical = 'center';
+          worksheetErros[cellAddress].s.alignment.horizontal = 'left';
         }
       });
     });
+    
+    // Garantir que o worksheet tem a propriedade de estilos configurada
+    // Isso é necessário para xlsx-js-style processar os estilos corretamente
+    if (!worksheetErros['!styles']) {
+      worksheetErros['!styles'] = {};
+    }
     
     XLSX.utils.book_append_sheet(workbook, worksheetErros, 'Linhas com Erro');
   }
