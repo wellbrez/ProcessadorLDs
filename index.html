@@ -8,14 +8,22 @@
   
   <!-- xlsx-js-style para processamento de Excel com suporte a formatação de células -->
   <!-- Compatível com SheetJS, mas adiciona suporte a estilos (cores, fontes, etc.) -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js" onerror="console.error('Erro ao carregar xlsx-js-style');"></script>
   
   <!-- PapaParse para processamento de CSV -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   
   <script>
-    // Auto-ativar modo teste se houver parâmetro na URL
+    // Verificar se XLSX está disponível após carregar bibliotecas
     window.addEventListener('DOMContentLoaded', function() {
+      if (typeof XLSX === 'undefined') {
+        console.error('❌ XLSX não está definido. Verifique se a biblioteca xlsx-js-style foi carregada corretamente.');
+        alert('Erro: Biblioteca XLSX não carregada. Verifique sua conexão com a internet e recarregue a página.');
+      } else {
+        console.log('✅ Biblioteca XLSX carregada com sucesso');
+      }
+      
+      // Auto-ativar modo teste se houver parâmetro na URL
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get('teste') === 'true') {
         const chk = document.getElementById('chkModoTeste');
