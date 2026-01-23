@@ -674,6 +674,9 @@ function exportarResultados() {
   
   // Consolidar todos os dados válidos
   const todosDados = [];
+  // Consolidar todas as linhas com erro de todos os arquivos
+  const todasLinhasComErro = [];
+  
   resultadosProcessamento.forEach(resultado => {
     if (resultado.dados && resultado.dados.length > 0) {
       resultado.dados.forEach(linha => {
@@ -687,12 +690,29 @@ function exportarResultados() {
         }
       });
     }
+    
+    // Coletar linhas com erro do detalhesProcessamento
+    if (resultado.detalhesProcessamento && resultado.detalhesProcessamento.linhasComErro) {
+      resultado.detalhesProcessamento.linhasComErro.forEach(linhaErro => {
+        todasLinhasComErro.push({
+          ...linhaErro.dados,
+          Arquivo: resultado.nomeArquivo,
+          LD: resultado.ld || '',
+          Revisao: resultado.revisao || '',
+          NumeroLinha: linhaErro.numeroLinha,
+          Erros: linhaErro.erros.join('; '),
+          CamposComErro: linhaErro.camposComErro.join(', '),
+          // Manter referência aos campos com erro para formatação
+          _camposComErro: linhaErro.camposComErro
+        });
+      });
+    }
   });
   
   const formato = exportFormat.value;
   const nomeArquivo = `dados_processados_${new Date().toISOString().split('T')[0]}`;
   
-  exportarDadosConsolidados(resultadoValidacao, todosDados, formato, nomeArquivo);
+  exportarDadosConsolidados(resultadoValidacao, todosDados, formato, nomeArquivo, todasLinhasComErro);
 }
 
 /**
