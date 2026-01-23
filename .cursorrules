@@ -1,23 +1,61 @@
 # Regras do Projeto - ProcessadorLDs
 
+**Autor:** Wellington Bravin  
+**Data:** 21/01/2026  
+**Versão:** 2.0
+
 ## Contexto do Projeto
-Este projeto é um aplicativo standalone para processamento de Listas de Documentos (LDs) em diversos formatos (CSV, XLSX, etc.). O objetivo é extrair, validar e consolidar dados de múltiplas LDs, identificando problemas que impedem o processamento.
+
+Este projeto é um aplicativo standalone para processamento de Listas de Documentos (LDs) em diversos formatos (CSV, XLSX, etc.). O objetivo é extrair, validar e consolidar dados de múltiplas LDs, identificando problemas que impedem o processamento. O projeto foi desenvolvido seguindo uma arquitetura modular para facilitar extensões futuras.
+
+## Arquitetura Modular
+
+### Princípios de Design
+
+1. **Separação de Responsabilidades**: Cada módulo tem uma responsabilidade única e bem definida
+2. **Baixo Acoplamento**: Módulos se comunicam através de interfaces claras (funções bem definidas)
+3. **Alta Coesão**: Funcionalidades relacionadas estão agrupadas no mesmo módulo
+4. **Extensibilidade**: Novos módulos podem ser adicionados sem modificar código existente
+5. **Testabilidade**: Cada módulo pode ser testado independentemente
+
+### Estrutura de Módulos
+
+```
+js/
+├── processor.js    # Processamento de dados (leitura, transformação, extração)
+├── validator.js    # Validações e regras de negócio
+├── exporter.js     # Exportação de resultados (CSV, XLSX, JSON)
+└── app.js          # Orquestração e interface (coordenação entre módulos)
+```
+
+### Regras para Novos Módulos
+
+- **Criar novo arquivo** em `js/` para cada novo módulo
+- **Nome descritivo**: Usar nomes que indiquem claramente a responsabilidade
+- **Interface pública**: Exportar apenas funções necessárias (evitar variáveis globais)
+- **Documentação Swagger**: Sempre adicionar comentários `@swagger` para todas as funções públicas
+- **Dependências mínimas**: Evitar dependências circulares entre módulos
+- **Testes**: Considerar como o módulo será testado antes de implementar
 
 ## Regras de Desenvolvimento
 
 ### Arquitetura
+
 - Aplicação standalone HTML/JavaScript que roda localmente
 - Não requer servidor ou instalação de dependências
 - Pode usar bibliotecas via CDN (SheetJS para Excel, PapaParse para CSV)
 - Processamento client-side apenas
+- **Bibliotecas externas**: Preferir CDN confiáveis (jsDelivr, UNPKG) com fallback
 
 ### Estrutura de Dados
+
 - **Colunas principais**: NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, REPROGRAMADO, REPROGRAMADO 1, REPROGRAMADO 2, REALIZADO, REALIZADO 1, REALIZADO 2, FORMATO, PAGS/ FOLHAS, AÇÕES
 - **Filtros**: Linhas com AÇÕES = "E" devem ser desconsideradas
-- **Validações obrigatórias**: NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto (seguindo lógica do Power Query original)
+- **Validações obrigatórias**: NO VALE, PREVISTO, PREVISTO 1, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto (seguindo lógica do Power Query original)
 - **Células mescladas**: O cabeçalho pode ter células mescladas (ex: "PREVISTO" cobrindo 3 colunas). A transformação deve usar FillDown e combinação com índice para criar PREVISTO, PREVISTO 1, PREVISTO 2
 
 ### Processamento de Arquivos
+
 1. **ProcessarNomeERevisao**: Extrair informações de LD e revisão de 3 fontes (ANTES de identificar cabeçalho):
    - Nome do arquivo (usando regex para padrões LD-8001PZ-F-XXXXX_REV_N)
    - Folha CAPA/ROSTO (se existir)
@@ -32,21 +70,23 @@ Este projeto é um aplicativo standalone para processamento de Listas de Documen
 4. Processar e limpar dados (maiúsculas, trim, clean)
 5. Normalizar nomes de colunas usando tabela de conversão
 6. Extrair disciplina do número do vale
-7. Converter PREVISTO 2 para DataPrevisto (objeto Date)
-8. Validar dados obrigatórios (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
+7. Converter PREVISTO 2 para DataPrevisto (objeto Date) - suporta formatos dd/MM/yyyy e dd/MM/yy
+8. Validar dados obrigatórios (NO VALE, PREVISTO, PREVISTO 1, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
 9. Filtrar linhas com AÇÕES = "E"
 10. Gerar relatório de status para cada LD com informações detalhadas do ProcessarNomeERevisao
 
 ### Validações de Problemas
+
 - **Inconsistência de LD**: LD encontrada em múltiplas fontes com valores diferentes (nome arquivo vs CAPA vs folha LD)
 - **Inconsistência de Revisão**: Revisão encontrada em múltiplas fontes com valores diferentes
 - **Planilhas inconsistentes**: Mais de 1 planilha ativa (além de F. Rosto)
 - **LD fora do padrão**: Não consegue identificar cabeçalho ou transformar dados
 - **Conteúdo não processado**: Arquivo corrompido ou com rótulo de confidencialidade
-- **Linhas incompletas**: Células obrigatórias sem preenchimento (NO VALE, PREVISTO, PREVISTO 1, PREVISTO 2, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
+- **Linhas incompletas**: Células obrigatórias sem preenchimento (NO VALE, PREVISTO, PREVISTO 1, FORMATO, PAGS/ FOLHAS, Disciplina, DataPrevisto)
 - **Nome de arquivo inválido**: Não segue padrão LD_*_REV_*.xlsx ou DF_*_REV_*.xlsx (mas não bloqueia processamento - apenas extrai do conteúdo)
 
 ### Extração de LD e Revisão (ProcessarNomeERevisao)
+
 - Extrair de 3 fontes (em ordem de prioridade):
   1. **Nome do arquivo**: Usar regex para padrões `LD-8001PZ-F-XXXXX_REV_N` ou `DF-LD-8001PZ-F-XXXXX_REV_N`
   2. **Folha CAPA/ROSTO**: Buscar no conteúdo da folha de capa/rosto (se existir)
@@ -58,6 +98,7 @@ Este projeto é um aplicativo standalone para processamento de Listas de Documen
 - Exibir informações detalhadas na interface principal (botão "Ver Detalhes ProcessarNomeERevisao" na tabela de status)
 
 ### Extração de Disciplina
+
 - Extrair do número do vale usando lógica:
   - Reverter string do NO VALE
   - Extrair valor entre delimitadores "-" e "-"
@@ -66,24 +107,221 @@ Este projeto é um aplicativo standalone para processamento de Listas de Documen
   - Caso contrário, null
 
 ### Formato de Saída
+
 - Suportar múltiplos formatos: CSV, Excel (XLSX), JSON
 - JSON é preferencial para integração com próximos módulos
 - Incluir metadados de processamento (status, erros, validações)
+- **Exportação Excel**: Incluir planilha "Linhas com Erro" separada com todos os dados das linhas problemáticas
 
-### Código
-- Sempre adicionar comentários Swagger/JSDoc para documentação automática
-- Usar JavaScript ES6+ com suporte a navegadores modernos
-- Tratamento de erros robusto com mensagens claras
-- Validação de dados em cada etapa do processamento
-- ProcessarNomeERevisao deve ser executado ANTES de identificar cabeçalho (não depende do cabeçalho estar presente)
-- Transformação de cabeçalho deve seguir lógica do Power Query: FillDown + combinação com índice para células mescladas
+## Boas Práticas Aprendidas
 
-### Testes
+### 1. Processamento de Dados
+
+- **Ordem de processamento importa**: ProcessarNomeERevisao deve ser executado ANTES de identificar cabeçalho (não depende do cabeçalho estar presente)
+- **Manter linhas com erro para validação**: Não descartar linhas com campos vazios antes da validação - deixar a validação identificar e reportar os problemas
+- **Transformação de cabeçalho**: Seguir exatamente a lógica do Power Query (FillDown + combinação com índice) para células mescladas
+- **Conversão de datas**: Priorizar verificação de formatos de string (dd/MM/yyyy, dd/MM/yy) antes de tentar parse como número serial do Excel
+
+### 2. Validação e Tratamento de Erros
+
+- **Validação em camadas**: Validar em múltiplos pontos (processamento, transformação, validação final)
+- **Mensagens de erro claras**: Incluir contexto suficiente para identificar o problema (arquivo, linha, campo)
+- **Consistência de dados**: Validar consistência entre múltiplas fontes (nome arquivo vs conteúdo)
+- **Não bloquear por validações não críticas**: Permitir processamento mesmo com problemas menores, mas reportar todos
+
+### 3. Interface e UX
+
+- **Feedback visual claro**: Usar cores consistentes (#007E7A) e badges de status
+- **Modal para detalhes**: Usar modal full-screen para informações detalhadas (evita problemas visuais de expansão inline)
+- **Progresso visível**: Mostrar barra de progresso durante processamento
+- **Estatísticas resumidas**: Mostrar apenas informações essenciais na tabela principal, detalhes no modal
+
+### 4. Código e Manutenibilidade
+
+- **Comentários Swagger obrigatórios**: Sempre documentar funções públicas com `@swagger`
+- **Código limpo**: Remover código não utilizado, console.logs de debug, comentários obsoletos
+- **Modularidade**: Manter módulos independentes e bem definidos
+- **Nomes descritivos**: Usar nomes que expliquem a intenção do código
+- **Evitar código "paleativo"**: Sempre investigar a causa raiz dos problemas antes de implementar soluções temporárias
+
+### 5. Bibliotecas Externas
+
+- **CDN com fallback**: Sempre ter fallback para bibliotecas críticas (ex: XLSX)
+- **Verificação de carregamento**: Verificar se bibliotecas foram carregadas antes de usar
+- **Versões específicas**: Usar versões específicas de bibliotecas (evitar "latest")
+- **Documentação**: Verificar documentação oficial antes de implementar funcionalidades complexas
+
+### 6. Testes e Debugging
+
+- **Testar com dados reais**: Sempre testar com arquivos reais de exemplo
+- **Modo teste**: Implementar modo teste para facilitar debugging sem poluir produção
+- **Logs estruturados**: Usar logs estruturados quando necessário (não console.logs espalhados)
+- **Validação incremental**: Testar cada etapa do processamento separadamente
+
+## Lições Aprendidas
+
+### 1. Processamento de Células Mescladas
+
+- **Problema**: Células mescladas no Excel não aparecem como mescladas quando lidas via SheetJS
+- **Solução**: Implementar lógica de FillDown + agrupamento + índice (seguindo Power Query)
+- **Lição**: Sempre verificar como a biblioteca lê dados antes de assumir estrutura
+
+### 2. Conversão de Datas
+
+- **Problema**: Datas em formato dd/mm/yy eram interpretadas incorretamente como números seriais do Excel
+- **Solução**: Verificar formato de string (presença de "/") antes de tentar parse numérico
+- **Lição**: Ordem de verificação importa - verificar formatos mais específicos primeiro
+
+### 3. Validação de Linhas com Erro
+
+- **Problema**: Linhas com NO VALE vazio eram descartadas antes da validação
+- **Solução**: Manter todas as linhas até a validação final, deixar validação identificar problemas
+- **Lição**: Não otimizar prematuramente - manter dados para validação completa
+
+### 4. Consistência de Dados entre Fontes
+
+- **Problema**: Valores diferentes entre nome do arquivo e conteúdo causavam confusão
+- **Solução**: Extrair de múltiplas fontes e validar consistência, reportar inconsistências como erro
+- **Lição**: Sempre validar consistência quando há múltiplas fontes de dados
+
+### 5. Interface e Performance
+
+- **Problema**: Exibir detalhes inline na tabela causava problemas visuais
+- **Solução**: Usar modal full-screen para detalhes
+- **Lição**: Separar visualização resumida de visualização detalhada
+
+### 6. Limpeza de Código
+
+- **Problema**: Código de formatação complexo que não funcionava corretamente
+- **Solução**: Remover funcionalidade não essencial, manter apenas o necessário
+- **Lição**: "Perfeito é o inimigo do bom" - funcionalidade simples e funcional é melhor que complexa e quebrada
+
+## Padrões de Código
+
+### JavaScript
+
+- **ES6+**: Usar arrow functions, async/await, destructuring, template literals
+- **Nomes descritivos**: Variáveis e funções devem ter nomes que expliquem sua função
+- **Funções pequenas**: Uma função, uma responsabilidade
+- **Tratamento de erros**: Sempre usar try/catch em operações assíncronas
+- **Validação de entrada**: Validar parâmetros no início das funções
+- **Comentários Swagger**: Sempre adicionar `@swagger` para funções públicas
+
+### Estrutura de Funções
+
+```javascript
+/**
+ * @swagger
+ * Descrição clara da função
+ * @param {Type} parametro - Descrição do parâmetro
+ * @returns {Type} Descrição do retorno
+ */
+function nomeFuncao(parametro) {
+  // 1. Validação de entrada
+  if (!parametro) {
+    throw new Error('Parâmetro obrigatório');
+  }
+  
+  // 2. Processamento
+  const resultado = processar(parametro);
+  
+  // 3. Retorno
+  return resultado;
+}
+```
+
+### HTML/CSS
+
+- **HTML5 semântico**: Usar elementos semânticos apropriados
+- **CSS modular**: Organizar por componentes, usar variáveis CSS
+- **Acessibilidade**: Adicionar atributos `aria-*` quando apropriado
+- **Responsividade**: Testar em diferentes tamanhos de tela
+
+## Processo de Desenvolvimento
+
+### Antes de Implementar
+
+1. **Ler documentação**: Verificar README.md, PROJETO.md, ARQUITETURA.md
+2. **Entender o problema**: Garantir 90% de certeza antes de implementar
+3. **Planejar a solução**: Identificar qual módulo será afetado
+4. **Verificar dependências**: Entender como a mudança afeta outros módulos
+
+### Durante a Implementação
+
+1. **Criar branch**: Se necessário, criar branch para feature
+2. **Implementar incrementalmente**: Fazer mudanças pequenas e testáveis
+3. **Documentar**: Adicionar comentários Swagger
+4. **Testar**: Testar com dados reais
+5. **Limpar código**: Remover código não utilizado, console.logs de debug
+
+### Após Implementar
+
+1. **Atualizar documentação**: Atualizar README.md, PROJETO.md, ARQUITETURA.md se necessário
+2. **Commit descritivo**: Mensagens de commit claras e descritivas
+3. **Verificar impacto**: Garantir que mudanças não quebram funcionalidades existentes
+4. **Publicar**: Push para repositório
+
+## Extensibilidade para Novos Módulos
+
+### Adicionando Novo Módulo
+
+1. **Criar arquivo**: `js/novo-modulo.js`
+2. **Definir interface**: Funções públicas com documentação Swagger
+3. **Integrar em app.js**: Adicionar chamadas ao novo módulo
+4. **Atualizar documentação**: Adicionar ao ARQUITETURA.md
+5. **Testar**: Garantir que funciona isoladamente e integrado
+
+### Exemplo de Novo Módulo
+
+```javascript
+/**
+ * @swagger
+ * ProcessadorLDs - Novo Módulo
+ * 
+ * Descrição do módulo
+ */
+
+/**
+ * @swagger
+ * Função principal do módulo
+ * @param {Type} parametro - Descrição
+ * @returns {Type} Descrição
+ */
+function funcaoPrincipal(parametro) {
+  // Implementação
+}
+```
+
+### Integração com Módulos Existentes
+
+- **processor.js**: Usar para processar dados antes de passar para novo módulo
+- **validator.js**: Usar para validar dados antes de processar
+- **exporter.js**: Usar para exportar resultados do novo módulo
+- **app.js**: Adicionar orquestração do novo módulo
+
+## Testes
+
 - Testar com arquivos reais de exemplo
 - Validar todos os tipos de erro possíveis
 - Garantir compatibilidade com diferentes formatos de LD
+- Testar integração entre módulos
+- Verificar performance com arquivos grandes
 
-### Documentação
+## Documentação
+
 - Manter README.md, PROJETO.md, ARQUITETURA.md, GUIA-DESENVOLVIMENTO.md, GUIA-STARTUP.md atualizados
 - Documentar cada função com propósito e parâmetros
 - Incluir exemplos de uso
+- Atualizar documentação sempre que adicionar funcionalidades
+
+## Checklist para Novas Funcionalidades
+
+- [ ] Funcionalidade está em módulo apropriado?
+- [ ] Funções têm documentação Swagger?
+- [ ] Código foi testado com dados reais?
+- [ ] Tratamento de erros implementado?
+- [ ] Validação de entrada implementada?
+- [ ] Documentação atualizada?
+- [ ] Código limpo (sem console.logs, código não utilizado)?
+- [ ] Commit com mensagem descritiva?
+- [ ] Mudanças não quebram funcionalidades existentes?
