@@ -508,7 +508,6 @@ function transformarDados(dadosBrutos, indiceCabecalho) {
   // 10. Transpose - Volta a ser uma linha (cabeçalho processado)
   // (Já temos cabecalhoNormalizado como array, que é equivalente)
   
-  // DEBUG: Verificar se cabeçalho tem todas as colunas necessárias
   // Validação silenciosa - colunas faltando serão detectadas na validação
   
   // 11. JuntarCabecalhoPlanilha - Combinar cabeçalho processado com dados
