@@ -144,22 +144,29 @@ function exportarXLSX(dados, nomeArquivo = 'dados_processados', linhasComErro = 
             worksheetErros[cellAddress] = { t: 's', v: '' };
           }
           
-          // Aplicar estilo usando xlsx-js-style
-          // Formato ARGB: FF (alpha) + RGB(255, 228, 225) = FFFFE4E1
-          worksheetErros[cellAddress].s = {
-            fill: {
-              patternType: 'solid',
-              fgColor: { rgb: 'FFFFE4E1' } // Rosa claro em formato ARGB
-            },
-            font: {
-              color: { rgb: 'FF000000' }, // Texto preto
-              bold: false
-            },
-            alignment: {
-              vertical: 'center',
-              horizontal: 'left'
-            }
-          };
+          // Aplicar estilo usando xlsx-js-style (se disponível)
+          // Verificar se a biblioteca suporta formatação (xlsx-js-style)
+          // Se não suportar, a célula será criada sem formatação, mas ainda aparecerá na planilha
+          try {
+            // Formato ARGB: FF (alpha) + RGB(255, 228, 225) = FFFFE4E1
+            worksheetErros[cellAddress].s = {
+              fill: {
+                patternType: 'solid',
+                fgColor: { rgb: 'FFFFE4E1' } // Rosa claro em formato ARGB
+              },
+              font: {
+                color: { rgb: 'FF000000' }, // Texto preto
+                bold: false
+              },
+              alignment: {
+                vertical: 'center',
+                horizontal: 'left'
+              }
+            };
+          } catch (e) {
+            // Se houver erro ao aplicar estilo (biblioteca não suporta), continuar sem formatação
+            console.warn('Formatação de células não suportada pela biblioteca carregada:', e);
+          }
         }
       });
     });
