@@ -598,12 +598,12 @@ function transformarDados(dadosBrutos, indiceCabecalho) {
       linhaObj['DataPrevisto'] = null;
     }
     
-    // Adicionar apenas se tiver NO VALE (conforme Power Query que filtra linhas vazias)
-    // No Power Query: Remove linhas completamente vazias antes de adicionar Disciplina
-    // Mas aqui já filtramos linhas vazias antes, então se chegou aqui e tem NO VALE, adiciona
-    if (linhaObj['NO VALE'] && linhaObj['NO VALE'] !== null && linhaObj['NO VALE'] !== '') {
-      dadosTransformados.push(linhaObj);
-    }
+    // IMPORTANTE: No Power Query, linhas com NO VALE vazio são mantidas até o filtro final (DadosFinais)
+    // O filtro final remove linhas onde [NO VALE] <> null and [NO VALE] <> ""
+    // Mas ANTES disso, essas linhas devem ser validadas e reportadas como erro
+    // Portanto, adicionamos TODAS as linhas (exceto completamente vazias) para validação
+    // A validação identificará linhas com NO VALE vazio e reportará como erro
+    dadosTransformados.push(linhaObj);
   }
   
   // Retornar dados transformados junto com informações do cabeçalho
