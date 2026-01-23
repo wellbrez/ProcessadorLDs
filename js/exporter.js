@@ -108,6 +108,17 @@ function exportarXLSX(dados, nomeArquivo = 'dados_processados', linhasComErro = 
     
     const worksheetErros = XLSX.utils.json_to_sheet(dadosLinhasErro);
     
+    // Verificar se a biblioteca suporta formatação (xlsx-js-style)
+    const suportaFormatacao = typeof XLSX.writeFile === 'function' && 
+                               (worksheetErros['!styles'] !== undefined || 
+                                typeof XLSX.utils.sheet_set_cell_style === 'function');
+    
+    if (!suportaFormatacao) {
+      console.warn('⚠️ Biblioteca não parece suportar formatação de células. A planilha será criada sem cores.');
+    } else {
+      console.log('✅ Biblioteca suporta formatação de células');
+    }
+    
     // Aplicar formatação de cor de fundo rosa claro nas células com erro
     // Usando xlsx-js-style que suporta formatação de células
     const range = XLSX.utils.decode_range(worksheetErros['!ref'] || 'A1');
@@ -152,27 +163,25 @@ function exportarXLSX(dados, nomeArquivo = 'dados_processados', linhasComErro = 
           // Aplicar estilo usando xlsx-js-style
           // Rosa claro: RGB(255, 228, 225) = #FFE4E1
           // Formato ARGB: FF (alpha) + FF (red) + E4 (green) + E1 (blue) = FFFFE4E1
-          // Alternativa sem alpha: FFE4E1 (alguns exemplos usam apenas 6 dígitos)
-          if (!worksheetErros[cellAddress].s) {
-            worksheetErros[cellAddress].s = {};
-          }
+          // Testar também formato sem alpha: FFE4E1
           
-          worksheetErros[cellAddress].s.fill = {
-            patternType: 'solid',
-            fgColor: { rgb: 'FFFFE4E1' } // Rosa claro em formato ARGB completo
+          // Criar objeto de estilo completo
+          worksheetErros[cellAddress].s = {
+            fill: {
+              patternType: 'solid',
+              fgColor: { rgb: 'FFFFE4E1' } // Rosa claro - formato ARGB completo
+            },
+            font: {
+              color: { rgb: 'FF000000' }, // Texto preto
+              bold: false
+            },
+            alignment: {
+              vertical: 'center',
+              horizontal: 'left'
+            }
           };
           
-          // Garantir que font e alignment também estão definidos
-          if (!worksheetErros[cellAddress].s.font) {
-            worksheetErros[cellAddress].s.font = {};
-          }
-          worksheetErros[cellAddress].s.font.color = { rgb: 'FF000000' }; // Texto preto
-          
-          if (!worksheetErros[cellAddress].s.alignment) {
-            worksheetErros[cellAddress].s.alignment = {};
-          }
-          worksheetErros[cellAddress].s.alignment.vertical = 'center';
-          worksheetErros[cellAddress].s.alignment.horizontal = 'left';
+          console.log(`Aplicando formatação em ${cellAddress} para campo ${campo}`);
         }
       });
     });
