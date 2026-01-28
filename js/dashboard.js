@@ -10,12 +10,12 @@ const graficosInstancias = {
   chartTemporal: null,
   chartDistribuicao: null,
   chartBarrasEmpilhadas: null,
-  chartDispersao: null,
+  chartAreaAcumuloCertificacao: null,
   chartGantt: null,
   chartAreaAcumulo: null,
   chartMapaCalorTemporal: null,
   chart3D: null,
-  chartMapaCalorDiscrepancias: null,
+  chartMapaCalorCertificacao: null,
   chartMapaCalorEmissao: null
 };
 
@@ -77,18 +77,80 @@ function prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamen
             }
           }
           
-          // Converter Data GR Rec
+          // Função auxiliar para converter data
+          const converterData = (dataStr) => {
+            if (!dataStr) return null;
+            if (dataStr instanceof Date) return dataStr;
+            if (typeof dataStr === 'string') {
+              const partes = dataStr.split('/');
+              if (partes.length === 3) {
+                return new Date(parseInt(partes[2]), parseInt(partes[1]) - 1, parseInt(partes[0]));
+              }
+              return new Date(dataStr);
+            }
+            return null;
+          };
+          
+          // Converter Data GR Rec (genérica)
           let dataGRRec = null;
           if (posProcessamento.dadosCSV && posProcessamento.dadosCSV.dataGRRec) {
-            dataGRRec = posProcessamento.dadosCSV.dataGRRec;
-            if (!(dataGRRec instanceof Date) && dataGRRec) {
-              if (typeof dataGRRec === 'string') {
-                const partes = dataGRRec.split('/');
-                if (partes.length === 3) {
-                  dataGRRec = new Date(parseInt(partes[2]), parseInt(partes[1]) - 1, parseInt(partes[0]));
-                } else {
-                  dataGRRec = new Date(dataGRRec);
-                }
+            dataGRRec = converterData(posProcessamento.dadosCSV.dataGRRec);
+          }
+          
+          // Buscar linha com PRIMEMISSAO para data de emissão (prevalece CSV)
+          let dataEmissao = null;
+          if (posProcessamento.linhasCSV && Array.isArray(posProcessamento.linhasCSV)) {
+            const linhaPrimEmissao = posProcessamento.linhasCSV.find(l => {
+              const emissao = l['EMISSAO'] || '';
+              return String(emissao).trim().toUpperCase() === 'PRIMEMISSAO';
+            });
+            if (linhaPrimEmissao && linhaPrimEmissao['Data GR Rec']) {
+              dataEmissao = converterData(linhaPrimEmissao['Data GR Rec']);
+            }
+          }
+          
+          // Se não encontrou PRIMEMISSAO, usar dataGRRec genérica se emitido
+          if (!dataEmissao && posProcessamento.emitido && dataGRRec) {
+            dataEmissao = dataGRRec;
+          }
+          
+          // Buscar linha com PRIMCERTIFICACAO para data de certificação
+          let dataCertificacao = null;
+          if (posProcessamento.linhasCSV && Array.isArray(posProcessamento.linhasCSV)) {
+            const linhaPrimCertificacao = posProcessamento.linhasCSV.find(l => {
+              return l['PRIMCERTIFICACAO'] === true;
+            });
+            if (linhaPrimCertificacao && linhaPrimCertificacao['Data GR Rec']) {
+              dataCertificacao = converterData(linhaPrimCertificacao['Data GR Rec']);
+            }
+          }
+          
+          // Calcular data prevista de certificação (Previsto + 14 dias)
+          let dataPrevistoCertificacao = null;
+          if (dataPrevisto) {
+            dataPrevistoCertificacao = new Date(dataPrevisto);
+            dataPrevistoCertificacao.setDate(dataPrevistoCertificacao.getDate() + 14);
+          }
+          
+          // Calcular status de certificação
+          let statusCertificacao = 'N/A';
+          if (dataPrevistoCertificacao) {
+            if (dataCertificacao) {
+              const diasAtraso = Math.round((dataCertificacao - dataPrevistoCertificacao) / (1000 * 60 * 60 * 24));
+              if (diasAtraso <= 0) {
+                statusCertificacao = 'No Prazo';
+              } else if (diasAtraso <= 7) {
+                statusCertificacao = 'Atraso Leve';
+              } else {
+                statusCertificacao = 'Atraso';
+              }
+            } else {
+              const hoje = new Date();
+              const diasAtraso = Math.round((hoje - dataPrevistoCertificacao) / (1000 * 60 * 60 * 24));
+              if (diasAtraso > 0) {
+                statusCertificacao = 'Pendente';
+              } else {
+                statusCertificacao = 'Aguardando';
               }
             }
           }
@@ -102,10 +164,15 @@ function prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamen
             formato: linha['FORMATO'] || '',
             dataPrevisto: dataPrevisto,
             dataGRRec: dataGRRec,
+            dataEmissao: dataEmissao, // Data GR REC quando EMISSAO = 'PRIMEMISSAO' (prevalece CSV)
+            dataCertificacao: dataCertificacao, // Data GR REC quando PRIMCERTIFICACAO = true
+            dataPrevistoCertificacao: dataPrevistoCertificacao, // Previsto + 14 dias
+            statusCertificacao: statusCertificacao, // Status calculado
             projetoSE: posProcessamento.dadosCSV?.projetoSE || '',
             empresa: posProcessamento.dadosCSV?.empresa || '',
             encontradoNoCSV: posProcessamento.encontradoNoCSV || false,
             emitido: posProcessamento.emitido || false,
+            certificado: !!dataCertificacao, // Boolean indicando se foi certificado
             diferencaData: posProcessamento.comparacaoData?.diferenca || null,
             statusData: posProcessamento.comparacaoData?.iguais === true ? 'OK' : 
                        (posProcessamento.comparacaoData?.iguais === false ? 'Diferente' : 'N/A')
@@ -120,43 +187,80 @@ function prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamen
 
 /**
  * @swagger
+ * Coleta valores de um select múltiplo, tratando "Todos" corretamente
+ * @param {HTMLSelectElement} selectElement - Elemento select
+ * @returns {Array|null} Array de valores selecionados ou null se "Todos" estiver selecionado
+ */
+function coletarValoresFiltro(selectElement) {
+  if (!selectElement) return null; // null = não filtrar este campo
+  
+  const selectedOptions = Array.from(selectElement.selectedOptions);
+  
+  // Verificar se "Todos" (valor vazio) está selecionado
+  const temTodos = selectedOptions.some(o => o.value === '');
+  
+  // Se "Todos" estiver selecionado OU nenhuma opção estiver selecionada, não filtrar
+  if (temTodos || selectedOptions.length === 0) {
+    return null; // null = não filtrar este campo
+  }
+  
+  // Retornar apenas valores não vazios
+  return selectedOptions
+    .map(o => o.value)
+    .filter(v => v !== null && v !== undefined && v !== '');
+}
+
+/**
+ * @swagger
  * Aplica filtros aos dados mesclados
  * @param {Array} dadosMesclados - Dados mesclados
- * @param {Object} filtros - Objeto com filtros
+ * @param {Object} filtros - Objeto com filtros (null = não filtrar)
  * @returns {Array} Dados filtrados
  */
 function aplicarFiltros(dadosMesclados, filtros) {
   if (!filtros) return dadosMesclados;
   
   return dadosMesclados.filter(d => {
-    // Filtro por projeto
-    if (filtros.projetos && filtros.projetos.length > 0 && filtros.projetos[0] !== '') {
-      if (!filtros.projetos.includes(d.projetoSE)) return false;
+    // Filtro por projeto (null = não filtrar)
+    if (filtros.projetos !== null && filtros.projetos !== undefined) {
+      if (filtros.projetos.length > 0 && !filtros.projetos.includes(d.projetoSE)) {
+        return false;
+      }
     }
     
-    // Filtro por empresa
-    if (filtros.empresas && filtros.empresas.length > 0 && filtros.empresas[0] !== '') {
-      if (!filtros.empresas.includes(d.empresa)) return false;
+    // Filtro por empresa (null = não filtrar)
+    if (filtros.empresas !== null && filtros.empresas !== undefined) {
+      if (filtros.empresas.length > 0 && !filtros.empresas.includes(d.empresa)) {
+        return false;
+      }
     }
     
-    // Filtro por LD
-    if (filtros.lds && filtros.lds.length > 0 && filtros.lds[0] !== '') {
-      if (!filtros.lds.includes(d.ld)) return false;
+    // Filtro por LD (null = não filtrar)
+    if (filtros.lds !== null && filtros.lds !== undefined) {
+      if (filtros.lds.length > 0 && !filtros.lds.includes(d.ld)) {
+        return false;
+      }
     }
     
-    // Filtro por disciplina
-    if (filtros.disciplinas && filtros.disciplinas.length > 0 && filtros.disciplinas[0] !== '') {
-      if (!filtros.disciplinas.includes(d.disciplina)) return false;
+    // Filtro por disciplina (null = não filtrar)
+    if (filtros.disciplinas !== null && filtros.disciplinas !== undefined) {
+      if (filtros.disciplinas.length > 0 && !filtros.disciplinas.includes(d.disciplina)) {
+        return false;
+      }
     }
     
-    // Filtro por formato
-    if (filtros.formatos && filtros.formatos.length > 0 && filtros.formatos[0] !== '') {
-      if (!filtros.formatos.includes(d.formato)) return false;
+    // Filtro por formato (null = não filtrar)
+    if (filtros.formatos !== null && filtros.formatos !== undefined) {
+      if (filtros.formatos.length > 0 && !filtros.formatos.includes(d.formato)) {
+        return false;
+      }
     }
     
     // Filtro por período
     if (filtros.dataInicio && d.dataPrevisto) {
-      if (d.dataPrevisto < new Date(filtros.dataInicio)) return false;
+      const dataInicio = new Date(filtros.dataInicio);
+      dataInicio.setHours(0, 0, 0, 0);
+      if (d.dataPrevisto < dataInicio) return false;
     }
     if (filtros.dataFim && d.dataPrevisto) {
       const dataFim = new Date(filtros.dataFim);
@@ -186,13 +290,13 @@ function atualizarTodosGraficos(dadosFiltrados) {
   criarGraficoTemporal(dadosFiltrados);
   criarMapaCalorTemporal(dadosFiltrados);
   criarGrafico3D(dadosFiltrados);
-  criarMapaCalorDiscrepancias(dadosFiltrados);
   criarGraficoGantt(dadosFiltrados);
   criarGraficoDistribuicao(dadosFiltrados);
   criarGraficoBarrasEmpilhadas(dadosFiltrados);
-  criarGraficoDispersao(dadosFiltrados);
   criarMapaCalorEmissao(dadosFiltrados);
+  criarMapaCalorCertificacao(dadosFiltrados);
   criarGraficoAreaAcumulo(dadosFiltrados);
+  criarGraficoAreaAcumuloCertificacao(dadosFiltrados);
 }
 
 /**
@@ -209,7 +313,7 @@ function destruirGraficos() {
   });
   
   // Limpar containers Plotly
-  const plotlyContainers = ['chartMapaCalorTemporal', 'chart3D', 'chartMapaCalorDiscrepancias', 'chartMapaCalorEmissao'];
+  const plotlyContainers = ['chartMapaCalorTemporal', 'chart3D', 'chartMapaCalorEmissao', 'chartMapaCalorCertificacao'];
   plotlyContainers.forEach(id => {
     const container = document.getElementById(id);
     if (container && typeof Plotly !== 'undefined') {
@@ -233,7 +337,9 @@ function atualizarEstatisticasDashboard(dados) {
   const total = dados.length;
   const encontrados = dados.filter(d => d.encontradoNoCSV).length;
   const emitidos = dados.filter(d => d.emitido).length;
+  const certificados = dados.filter(d => d.certificado).length;
   const comDiscrepancia = dados.filter(d => d.diferencaData !== null && d.diferencaData !== 0).length;
+  const certificacaoPendente = dados.filter(d => d.statusCertificacao === 'Pendente').length;
   
   statsContainer.innerHTML = `
     <div class="stat-card">
@@ -247,6 +353,14 @@ function atualizarEstatisticasDashboard(dados) {
     <div class="stat-card">
       <div class="stat-value">${emitidos}</div>
       <div class="stat-label">Emitidos</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${certificados}</div>
+      <div class="stat-label">Certificados</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${certificacaoPendente}</div>
+      <div class="stat-label">Certificação Pendente</div>
     </div>
     <div class="stat-card">
       <div class="stat-value">${comDiscrepancia}</div>
@@ -269,55 +383,105 @@ function criarGraficoTemporal(dados) {
     graficosInstancias.chartTemporal.destroy();
   }
   
-  // Agrupar por período (semana ou mês)
+  // Agrupar por período (mês)
   const agrupamento = {};
   
   dados.forEach(d => {
-    if (d.dataPrevisto || d.dataGRRec) {
+    if (d.dataPrevisto || d.dataEmissao) {
       // Agrupar por mês
       const mesPrevisto = d.dataPrevisto ? 
         `${d.dataPrevisto.getFullYear()}-${String(d.dataPrevisto.getMonth() + 1).padStart(2, '0')}` : null;
-      const mesRealizado = d.dataGRRec ? 
-        `${d.dataGRRec.getFullYear()}-${String(d.dataGRRec.getMonth() + 1).padStart(2, '0')}` : null;
+      const mesEmissao = d.dataEmissao ? 
+        `${d.dataEmissao.getFullYear()}-${String(d.dataEmissao.getMonth() + 1).padStart(2, '0')}` : null;
       
       if (mesPrevisto) {
         if (!agrupamento[mesPrevisto]) {
-          agrupamento[mesPrevisto] = { previsto: 0, realizado: 0 };
+          agrupamento[mesPrevisto] = { previsto: 0, emitido: 0, certificado: 0 };
         }
         agrupamento[mesPrevisto].previsto++;
       }
       
-      if (mesRealizado) {
-        if (!agrupamento[mesRealizado]) {
-          agrupamento[mesRealizado] = { previsto: 0, realizado: 0 };
+      if (mesEmissao) {
+        if (!agrupamento[mesEmissao]) {
+          agrupamento[mesEmissao] = { previsto: 0, emitido: 0, certificado: 0 };
         }
-        agrupamento[mesRealizado].realizado++;
+        agrupamento[mesEmissao].emitido++;
+        if (d.certificado) {
+          agrupamento[mesEmissao].certificado++;
+        }
       }
     }
   });
   
   const periodos = Object.keys(agrupamento).sort();
   const previstos = periodos.map(p => agrupamento[p].previsto);
-  const realizados = periodos.map(p => agrupamento[p].realizado);
+  const realizados = periodos.map(p => agrupamento[p].emitido);
+  
+  // Calcular totais para tabela de resumo
+  const totalPrevisto = previstos.reduce((a, b) => a + b, 0);
+  const totalEmitido = realizados.reduce((a, b) => a + b, 0);
+  const totalCertificado = dados.filter(d => d.certificado).length;
+  const totalEmitidoSemCertificar = totalEmitido - totalCertificado;
+  
+  // Criar tabela de resumo
+  const container = canvas.parentElement.parentElement; // chart-container
+  let resumoTable = container.querySelector('.temporal-resumo-table');
+  if (!resumoTable) {
+    // Procurar div ao lado do canvas
+    const canvasWrapper = canvas.parentElement;
+    const resumoDiv = canvasWrapper.nextElementSibling;
+    if (resumoDiv) {
+      resumoTable = document.createElement('div');
+      resumoTable.className = 'temporal-resumo-table';
+      resumoTable.style.cssText = 'padding: 15px; background: #f8f9fa; border-radius: 8px;';
+      resumoDiv.appendChild(resumoTable);
+    } else {
+      // Fallback: criar após o container
+      resumoTable = document.createElement('div');
+      resumoTable.className = 'temporal-resumo-table';
+      resumoTable.style.cssText = 'margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;';
+      container.appendChild(resumoTable);
+    }
+  }
+  resumoTable.innerHTML = `
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background: var(--color-primary); color: white;">
+          <th style="padding: 10px; text-align: left;">Métrica</th>
+          <th style="padding: 10px; text-align: right;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">Total Previsto</td>
+          <td style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd; font-weight: 600;">${totalPrevisto}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">Total Emitido (sem certificar)</td>
+          <td style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd; font-weight: 600;">${totalEmitidoSemCertificar}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px;">Total Certificado</td>
+          <td style="padding: 8px; text-align: right; font-weight: 600;">${totalCertificado}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
   
   graficosInstancias.chartTemporal = new Chart(canvas, {
-    type: 'line',
+    type: 'bar',
     data: {
       labels: periodos,
       datasets: [
         {
           label: 'Previsto',
           data: previstos,
-          borderColor: 'rgb(75, 192, 192)',
-          backgroundColor: 'rgba(75, 192, 192, 0.2)',
-          tension: 0.1
+          backgroundColor: 'rgba(75, 192, 192, 0.8)'
         },
         {
           label: 'Realizado',
           data: realizados,
-          borderColor: 'rgb(255, 99, 132)',
-          backgroundColor: 'rgba(255, 99, 132, 0.2)',
-          tension: 0.1
+          backgroundColor: 'rgba(255, 99, 132, 0.8)'
         }
       ]
     },
@@ -334,8 +498,18 @@ function criarGraficoTemporal(dados) {
         }
       },
       scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Período'
+          }
+        },
         y: {
-          beginAtZero: true
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Quantidade de Documentos'
+          }
         }
       }
     }
@@ -473,73 +647,11 @@ function criarGrafico3D(dados) {
   Plotly.newPlot(container, [trace], layout, {responsive: true});
 }
 
-/**
- * @swagger
- * Cria mapa de calor de discrepâncias de data
- * @param {Array} dados - Dados filtrados
- */
-function criarMapaCalorDiscrepancias(dados) {
-  const container = document.getElementById('chartMapaCalorDiscrepancias');
-  if (!container || typeof Plotly === 'undefined') return;
-  
-  // Filtrar apenas dados com discrepância
-  const dadosComDiscrepancia = dados.filter(d => d.diferencaData !== null && d.diferencaData !== 0);
-  
-  if (dadosComDiscrepancia.length === 0) {
-    container.innerHTML = '<p style="text-align: center; padding: 20px;">Nenhuma discrepância encontrada</p>';
-    return;
-  }
-  
-  // Agrupar por projeto e disciplina
-  const agrupamento = {};
-  const projetos = [...new Set(dadosComDiscrepancia.map(d => d.projetoSE).filter(p => p))];
-  const disciplinas = [...new Set(dadosComDiscrepancia.map(d => d.disciplina).filter(d => d))];
-  
-  dadosComDiscrepancia.forEach(d => {
-    if (d.projetoSE && d.disciplina) {
-      if (!agrupamento[d.projetoSE]) {
-        agrupamento[d.projetoSE] = {};
-      }
-      if (!agrupamento[d.projetoSE][d.disciplina]) {
-        agrupamento[d.projetoSE][d.disciplina] = { soma: 0, count: 0 };
-      }
-      agrupamento[d.projetoSE][d.disciplina].soma += Math.abs(d.diferencaData);
-      agrupamento[d.projetoSE][d.disciplina].count++;
-    }
-  });
-  
-  // Criar matriz de valores (média de dias de atraso)
-  const z = disciplinas.map(disciplina => 
-    projetos.map(projeto => {
-      const item = agrupamento[projeto]?.[disciplina];
-      return item ? item.soma / item.count : 0;
-    })
-  );
-  
-  const trace = {
-    x: projetos,
-    y: disciplinas,
-    z: z,
-    type: 'heatmap',
-    colorscale: [[0, 'green'], [0.5, 'yellow'], [1, 'red']],
-    showscale: true,
-    colorbar: {
-      title: 'Atraso Médio (dias)'
-    }
-  };
-  
-  const layout = {
-    title: '',
-    xaxis: { title: 'Projeto/SE' },
-    yaxis: { title: 'Disciplina' }
-  };
-  
-  Plotly.newPlot(container, [trace], layout, {responsive: true});
-}
 
 /**
  * @swagger
- * Cria gráfico de Gantt (timeline)
+ * Cria gráfico de timeline melhorado (substitui Gantt)
+ * Mostra distribuição de documentos por período com status
  * @param {Array} dados - Dados filtrados
  */
 function criarGraficoGantt(dados) {
@@ -550,55 +662,157 @@ function criarGraficoGantt(dados) {
     graficosInstancias.chartGantt.destroy();
   }
   
-  // Preparar dados: limitar a 100 documentos para performance
-  const dadosLimitados = dados.slice(0, 100);
+  // Agrupar por período (semana ou mês) e contar documentos
+  const agrupamento = {};
+  const periodos = [];
   
-  const labels = dadosLimitados.map(d => d.noVale || 'N/A');
-  const previstos = dadosLimitados.map(d => d.dataPrevisto ? d.dataPrevisto.getTime() : null);
-  const realizados = dadosLimitados.map(d => d.dataGRRec ? d.dataGRRec.getTime() : null);
+  dados.forEach(d => {
+    if (d.dataPrevisto) {
+      // Agrupar por mês para melhor visualização
+      const data = d.dataPrevisto;
+      const periodo = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!agrupamento[periodo]) {
+        agrupamento[periodo] = {
+          total: 0,
+          emitido: 0,
+          naoEmitido: 0,
+          naoEncontrado: 0,
+          certificado: 0,
+          certificacaoPendente: 0,
+          comDiscrepancia: 0
+        };
+        if (!periodos.includes(periodo)) {
+          periodos.push(periodo);
+        }
+      }
+      
+      agrupamento[periodo].total++;
+      if (d.emitido) {
+        agrupamento[periodo].emitido++;
+      } else if (d.encontradoNoCSV) {
+        agrupamento[periodo].naoEmitido++;
+      } else {
+        agrupamento[periodo].naoEncontrado++;
+      }
+      
+      if (d.certificado) {
+        agrupamento[periodo].certificado++;
+      }
+      
+      if (d.statusCertificacao === 'Pendente') {
+        agrupamento[periodo].certificacaoPendente++;
+      }
+      
+      if (d.diferencaData !== null && d.diferencaData !== 0) {
+        agrupamento[periodo].comDiscrepancia++;
+      }
+    }
+  });
   
-  // Converter para dias desde uma data base
-  const dataBase = Math.min(...previstos.filter(p => p !== null));
-  const previstosDias = previstos.map(p => p ? (p - dataBase) / (1000 * 60 * 60 * 24) : null);
-  const realizadosDias = realizados.map(r => r ? (r - dataBase) / (1000 * 60 * 60 * 24) : null);
+  periodos.sort();
+  
+  const totais = periodos.map(p => agrupamento[p].total);
+  const emitidos = periodos.map(p => agrupamento[p].emitido);
+  const naoEmitidos = periodos.map(p => agrupamento[p].naoEmitido);
+  const naoEncontrados = periodos.map(p => agrupamento[p].naoEncontrado);
+  const certificados = periodos.map(p => agrupamento[p].certificado);
+  const certificacaoPendente = periodos.map(p => agrupamento[p].certificacaoPendente);
+  const comDiscrepancia = periodos.map(p => agrupamento[p].comDiscrepancia);
   
   graficosInstancias.chartGantt = new Chart(canvas, {
-    type: 'bar',
+    type: 'line',
     data: {
-      labels: labels,
+      labels: periodos,
       datasets: [
         {
-          label: 'Previsto',
-          data: previstosDias,
-          backgroundColor: 'rgba(128, 128, 128, 0.5)'
+          label: 'Total de Documentos',
+          data: totais,
+          borderColor: 'rgba(54, 162, 235, 1)',
+          backgroundColor: 'rgba(54, 162, 235, 0.2)',
+          tension: 0.1,
+          fill: true
         },
         {
-          label: 'Realizado',
-          data: realizadosDias,
-          backgroundColor: dadosLimitados.map(d => {
-            if (!d.dataGRRec) return 'rgba(255, 0, 0, 0.5)';
-            if (d.diferencaData && Math.abs(d.diferencaData) > 5) return 'rgba(255, 165, 0, 0.5)';
-            return 'rgba(0, 255, 0, 0.5)';
-          })
+          label: 'Emitidos',
+          data: emitidos,
+          borderColor: 'rgba(0, 255, 0, 1)',
+          backgroundColor: 'rgba(0, 255, 0, 0.2)',
+          tension: 0.1
+        },
+        {
+          label: 'Certificados',
+          data: certificados,
+          borderColor: 'rgba(0, 200, 255, 1)',
+          backgroundColor: 'rgba(0, 200, 255, 0.2)',
+          tension: 0.1
+        },
+        {
+          label: 'Certificação Pendente',
+          data: certificacaoPendente,
+          borderColor: 'rgba(255, 140, 0, 1)',
+          backgroundColor: 'rgba(255, 140, 0, 0.2)',
+          tension: 0.1
+        },
+        {
+          label: 'Não Emitidos',
+          data: naoEmitidos,
+          borderColor: 'rgba(255, 165, 0, 1)',
+          backgroundColor: 'rgba(255, 165, 0, 0.2)',
+          tension: 0.1
+        },
+        {
+          label: 'Não Encontrados',
+          data: naoEncontrados,
+          borderColor: 'rgba(255, 0, 0, 1)',
+          backgroundColor: 'rgba(255, 0, 0, 0.2)',
+          tension: 0.1
+        },
+        {
+          label: 'Com Discrepância',
+          data: comDiscrepancia,
+          borderColor: 'rgba(255, 99, 132, 1)',
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          tension: 0.1,
+          borderDash: [5, 5]
         }
       ]
     },
     options: {
-      indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          display: true
+          display: true,
+          position: 'top'
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false
+        },
+        title: {
+          display: true,
+          text: 'Evolução de Documentos por Período'
         }
       },
       scales: {
         x: {
           title: {
             display: true,
-            text: 'Dias desde data base'
+            text: 'Período'
+          }
+        },
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Quantidade de Documentos'
           }
         }
+      },
+      interaction: {
+        mode: 'index',
+        intersect: false
       }
     }
   });
@@ -626,11 +840,56 @@ function criarGraficoDistribuicao(dados) {
   
   const labels = Object.keys(contagem);
   const valores = Object.values(contagem);
+  const total = valores.reduce((a, b) => a + b, 0);
+  
+  // Criar labels com número e percentual
+  const labelsComPercentual = labels.map((label, index) => {
+    const valor = valores[index];
+    const percentual = total > 0 ? ((valor / total) * 100).toFixed(1) : 0;
+    return `${label}\n${valor} (${percentual}%)`;
+  });
+  
+  // Criar tabela de resumo
+  const container = canvas.parentElement;
+  let resumoTable = container.querySelector('.distribuicao-resumo-table');
+  if (!resumoTable) {
+    resumoTable = document.createElement('div');
+    resumoTable.className = 'distribuicao-resumo-table';
+    resumoTable.style.cssText = 'margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; max-height: 300px; overflow-y: auto;';
+    container.appendChild(resumoTable);
+  }
+  
+  const tabelaHTML = labels.map((label, index) => {
+    const valor = valores[index];
+    const percentual = total > 0 ? ((valor / total) * 100).toFixed(1) : 0;
+    return `
+      <tr>
+        <td style="padding: 6px; border-bottom: 1px solid #ddd;">${label}</td>
+        <td style="padding: 6px; text-align: right; border-bottom: 1px solid #ddd; font-weight: 600;">${valor}</td>
+        <td style="padding: 6px; text-align: right; border-bottom: 1px solid #ddd;">${percentual}%</td>
+      </tr>
+    `;
+  }).join('');
+  
+  resumoTable.innerHTML = `
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+      <thead>
+        <tr style="background: var(--color-primary); color: white;">
+          <th style="padding: 8px; text-align: left;">Disciplina</th>
+          <th style="padding: 8px; text-align: right;">Quantidade</th>
+          <th style="padding: 8px; text-align: right;">Percentual</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tabelaHTML}
+      </tbody>
+    </table>
+  `;
   
   graficosInstancias.chartDistribuicao = new Chart(canvas, {
     type: 'doughnut',
     data: {
-      labels: labels,
+      labels: labelsComPercentual,
       datasets: [{
         data: valores,
         backgroundColor: [
@@ -648,7 +907,22 @@ function criarGraficoDistribuicao(dados) {
       maintainAspectRatio: true,
       plugins: {
         legend: {
-          position: 'bottom'
+          position: 'bottom',
+          labels: {
+            font: {
+              size: 11
+            }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = labels[context.dataIndex];
+              const valor = valores[context.dataIndex];
+              const percentual = total > 0 ? ((valor / total) * 100).toFixed(1) : 0;
+              return `${label}: ${valor} (${percentual}%)`;
+            }
+          }
         }
       }
     }
@@ -673,19 +947,33 @@ function criarGraficoBarrasEmpilhadas(dados) {
   dados.forEach(d => {
     const projeto = d.projetoSE || 'N/A';
     if (!agrupamento[projeto]) {
-      agrupamento[projeto] = { emitido: 0, naoEmitido: 0, naoEncontrado: 0 };
+      agrupamento[projeto] = { 
+        certificado: 0,
+        emitidoNaoCertificado: 0,
+        naoEmitido: 0,
+        naoEncontrado: 0
+      };
     }
-    if (d.emitido) {
-      agrupamento[projeto].emitido++;
+    
+    // Classificar documento
+    if (d.certificado) {
+      // Certificado (verde)
+      agrupamento[projeto].certificado++;
+    } else if (d.emitido) {
+      // Emitido mas não certificado (laranja)
+      agrupamento[projeto].emitidoNaoCertificado++;
     } else if (d.encontradoNoCSV) {
+      // Não emitido (amarelo)
       agrupamento[projeto].naoEmitido++;
     } else {
+      // Não encontrado (vermelho)
       agrupamento[projeto].naoEncontrado++;
     }
   });
   
   const projetos = Object.keys(agrupamento);
-  const emitidos = projetos.map(p => agrupamento[p].emitido);
+  const certificados = projetos.map(p => agrupamento[p].certificado);
+  const emitidoNaoCertificado = projetos.map(p => agrupamento[p].emitidoNaoCertificado);
   const naoEmitidos = projetos.map(p => agrupamento[p].naoEmitido);
   const naoEncontrados = projetos.map(p => agrupamento[p].naoEncontrado);
   
@@ -695,19 +983,24 @@ function criarGraficoBarrasEmpilhadas(dados) {
       labels: projetos,
       datasets: [
         {
-          label: 'Emitido',
-          data: emitidos,
-          backgroundColor: 'rgba(0, 255, 0, 0.8)'
+          label: 'Emitido e não certificado',
+          data: emitidoNaoCertificado,
+          backgroundColor: 'rgba(255, 165, 0, 0.8)' // Laranja
+        },
+        {
+          label: 'Certificado',
+          data: certificados,
+          backgroundColor: 'rgba(0, 126, 122, 0.8)' // Verde #007E7A
         },
         {
           label: 'Não Emitido',
           data: naoEmitidos,
-          backgroundColor: 'rgba(255, 165, 0, 0.8)'
+          backgroundColor: 'rgba(255, 255, 0, 0.8)' // Amarelo
         },
         {
           label: 'Não Encontrado',
           data: naoEncontrados,
-          backgroundColor: 'rgba(255, 0, 0, 0.8)'
+          backgroundColor: 'rgba(255, 0, 0, 0.8)' // Vermelho
         }
       ]
     },
@@ -732,85 +1025,6 @@ function criarGraficoBarrasEmpilhadas(dados) {
   });
 }
 
-/**
- * @swagger
- * Cria gráfico de dispersão: Atraso vs Volume
- * @param {Array} dados - Dados filtrados
- */
-function criarGraficoDispersao(dados) {
-  const canvas = document.getElementById('chartDispersao');
-  if (!canvas) return;
-  
-  if (graficosInstancias.chartDispersao) {
-    graficosInstancias.chartDispersao.destroy();
-  }
-  
-  // Agrupar por projeto ou disciplina
-  const agrupamento = {};
-  dados.forEach(d => {
-    const key = d.projetoSE || d.disciplina || 'N/A';
-    if (!agrupamento[key]) {
-      agrupamento[key] = { volume: 0, atrasos: [], discrepancias: 0 };
-    }
-    agrupamento[key].volume++;
-    if (d.diferencaData !== null) {
-      agrupamento[key].atrasos.push(Math.abs(d.diferencaData));
-      if (d.diferencaData !== 0) agrupamento[key].discrepancias++;
-    }
-  });
-  
-  const labels = Object.keys(agrupamento);
-  const volumes = labels.map(l => agrupamento[l].volume);
-  const atrasosMedios = labels.map(l => {
-    const atrasos = agrupamento[l].atrasos;
-    return atrasos.length > 0 ? atrasos.reduce((a, b) => a + b, 0) / atrasos.length : 0;
-  });
-  const tamanhos = labels.map(l => agrupamento[l].discrepancias);
-  
-  graficosInstancias.chartDispersao = new Chart(canvas, {
-    type: 'scatter',
-    data: {
-      datasets: [{
-        label: 'Projetos/Disciplinas',
-        data: volumes.map((v, i) => ({ x: v, y: atrasosMedios[i] })),
-        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        pointRadius: tamanhos.map(t => Math.max(5, Math.min(20, t + 5)))
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: {
-          display: false
-        },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const index = context.dataIndex;
-              return `${labels[index]}: Volume=${volumes[index]}, Atraso médio=${atrasosMedios[index].toFixed(1)} dias`;
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          title: {
-            display: true,
-            text: 'Volume de Documentos'
-          }
-        },
-        y: {
-          title: {
-            display: true,
-            text: 'Atraso Médio (dias)'
-          }
-        }
-      }
-    }
-  });
-}
 
 /**
  * @swagger
@@ -839,11 +1053,12 @@ function criarMapaCalorEmissao(dados) {
     }
   });
   
-  // Criar matriz de taxas (percentual de emitidos)
+  // Criar matriz de taxas (percentual de emitidos) - máximo 100%
   const z = disciplinas.map(disciplina => 
     projetos.map(projeto => {
       const item = agrupamento[projeto]?.[disciplina];
-      return item && item.total > 0 ? (item.emitidos / item.total) * 100 : 0;
+      const taxa = item && item.total > 0 ? (item.emitidos / item.total) * 100 : 0;
+      return Math.min(100, taxa); // Garantir máximo de 100%
     })
   );
   
@@ -854,8 +1069,69 @@ function criarMapaCalorEmissao(dados) {
     type: 'heatmap',
     colorscale: [[0, 'red'], [0.5, 'yellow'], [1, 'green']],
     showscale: true,
+    zmin: 0,
+    zmax: 100, // Máximo de 100%
     colorbar: {
       title: 'Taxa de Emissão (%)'
+    }
+  };
+  
+  const layout = {
+    title: '',
+    xaxis: { title: 'Projeto/SE' },
+    yaxis: { title: 'Disciplina' }
+  };
+  
+  Plotly.newPlot(container, [trace], layout, {responsive: true});
+}
+
+/**
+ * @swagger
+ * Cria mapa de calor de taxa de certificação
+ * @param {Array} dados - Dados filtrados
+ */
+function criarMapaCalorCertificacao(dados) {
+  const container = document.getElementById('chartMapaCalorCertificacao');
+  if (!container || typeof Plotly === 'undefined') return;
+  
+  // Agrupar por projeto e disciplina
+  const agrupamento = {};
+  const projetos = [...new Set(dados.map(d => d.projetoSE).filter(p => p))];
+  const disciplinas = [...new Set(dados.map(d => d.disciplina).filter(d => d))];
+  
+  dados.forEach(d => {
+    if (d.projetoSE && d.disciplina) {
+      if (!agrupamento[d.projetoSE]) {
+        agrupamento[d.projetoSE] = {};
+      }
+      if (!agrupamento[d.projetoSE][d.disciplina]) {
+        agrupamento[d.projetoSE][d.disciplina] = { total: 0, certificados: 0 };
+      }
+      agrupamento[d.projetoSE][d.disciplina].total++;
+      if (d.certificado) agrupamento[d.projetoSE][d.disciplina].certificados++;
+    }
+  });
+  
+  // Criar matriz de taxas (percentual de certificados) - máximo 100%
+  const z = disciplinas.map(disciplina => 
+    projetos.map(projeto => {
+      const item = agrupamento[projeto]?.[disciplina];
+      const taxa = item && item.total > 0 ? (item.certificados / item.total) * 100 : 0;
+      return Math.min(100, taxa); // Garantir máximo de 100%
+    })
+  );
+  
+  const trace = {
+    x: projetos,
+    y: disciplinas,
+    z: z,
+    type: 'heatmap',
+    colorscale: [[0, 'red'], [0.5, 'yellow'], [1, 'green']],
+    showscale: true,
+    zmin: 0,
+    zmax: 100, // Máximo de 100%
+    colorbar: {
+      title: 'Taxa de Certificação (%)'
     }
   };
   
@@ -881,54 +1157,47 @@ function criarGraficoAreaAcumulo(dados) {
     graficosInstancias.chartAreaAcumulo.destroy();
   }
   
-  // Agrupar por período
+  // Agrupar por período usando dataPrevisto (LD) e dataEmissao (CSV PRIMEMISSAO)
   const agrupamento = {};
+  const periodosSet = new Set();
+  
   dados.forEach(d => {
+    // Acúmulo Previsto (LD)
     if (d.dataPrevisto) {
       const periodo = `${d.dataPrevisto.getFullYear()}-${String(d.dataPrevisto.getMonth() + 1).padStart(2, '0')}`;
+      periodosSet.add(periodo);
       if (!agrupamento[periodo]) {
-        agrupamento[periodo] = { previsto: 0, realizado: 0, emitido: 0, naoEmitido: 0 };
+        agrupamento[periodo] = { previsto: 0, realizado: 0 };
       }
       agrupamento[periodo].previsto++;
-      
-      if (d.dataGRRec) {
-        const periodoRealizado = `${d.dataGRRec.getFullYear()}-${String(d.dataGRRec.getMonth() + 1).padStart(2, '0')}`;
-        if (!agrupamento[periodoRealizado]) {
-          agrupamento[periodoRealizado] = { previsto: 0, realizado: 0, emitido: 0, naoEmitido: 0 };
-        }
-        agrupamento[periodoRealizado].realizado++;
-        if (d.emitido) {
-          agrupamento[periodoRealizado].emitido++;
-        } else {
-          agrupamento[periodoRealizado].naoEmitido++;
-        }
+    }
+    
+    // Acúmulo Realizado (CSV DATA GR REC PRIMEMISSAO)
+    if (d.dataEmissao) {
+      const periodo = `${d.dataEmissao.getFullYear()}-${String(d.dataEmissao.getMonth() + 1).padStart(2, '0')}`;
+      periodosSet.add(periodo);
+      if (!agrupamento[periodo]) {
+        agrupamento[periodo] = { previsto: 0, realizado: 0 };
       }
+      agrupamento[periodo].realizado++;
     }
   });
   
-  const periodos = Object.keys(agrupamento).sort();
+  const periodos = Array.from(periodosSet).sort();
   
   // Calcular acúmulo
   let acumuloPrevisto = 0;
   let acumuloRealizado = 0;
-  let acumuloEmitido = 0;
-  let acumuloNaoEmitido = 0;
   
   const previstosAcum = [];
   const realizadosAcum = [];
-  const emitidosAcum = [];
-  const naoEmitidosAcum = [];
   
   periodos.forEach(periodo => {
-    acumuloPrevisto += agrupamento[periodo].previsto;
-    acumuloRealizado += agrupamento[periodo].realizado;
-    acumuloEmitido += agrupamento[periodo].emitido;
-    acumuloNaoEmitido += agrupamento[periodo].naoEmitido;
+    acumuloPrevisto += agrupamento[periodo]?.previsto || 0;
+    acumuloRealizado += agrupamento[periodo]?.realizado || 0;
     
     previstosAcum.push(acumuloPrevisto);
     realizadosAcum.push(acumuloRealizado);
-    emitidosAcum.push(acumuloEmitido);
-    naoEmitidosAcum.push(acumuloNaoEmitido);
   });
   
   graficosInstancias.chartAreaAcumulo = new Chart(canvas, {
@@ -937,32 +1206,20 @@ function criarGraficoAreaAcumulo(dados) {
       labels: periodos,
       datasets: [
         {
-          label: 'Acúmulo Previsto',
+          label: 'Acúmulo Previsto (LD)',
           data: previstosAcum,
           borderColor: 'rgb(75, 192, 192)',
           backgroundColor: 'rgba(75, 192, 192, 0.2)',
-          fill: true
+          fill: true,
+          tension: 0.1
         },
         {
-          label: 'Acúmulo Realizado',
+          label: 'Acúmulo Realizado (CSV PRIMEMISSAO)',
           data: realizadosAcum,
           borderColor: 'rgb(255, 99, 132)',
           backgroundColor: 'rgba(255, 99, 132, 0.2)',
-          fill: true
-        },
-        {
-          label: 'Acúmulo Emitido',
-          data: emitidosAcum,
-          borderColor: 'rgb(0, 255, 0)',
-          backgroundColor: 'rgba(0, 255, 0, 0.2)',
-          fill: true
-        },
-        {
-          label: 'Acúmulo Não Emitido',
-          data: naoEmitidosAcum,
-          borderColor: 'rgb(255, 165, 0)',
-          backgroundColor: 'rgba(255, 165, 0, 0.2)',
-          fill: true
+          fill: true,
+          tension: 0.1
         }
       ]
     },
@@ -972,11 +1229,135 @@ function criarGraficoAreaAcumulo(dados) {
       plugins: {
         legend: {
           display: true
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false
         }
       },
       scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Período'
+          }
+        },
         y: {
-          beginAtZero: true
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Acúmulo de Documentos'
+          }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * @swagger
+ * Cria gráfico de área: Acúmulo de Certificação
+ * @param {Array} dados - Dados filtrados
+ */
+function criarGraficoAreaAcumuloCertificacao(dados) {
+  const canvas = document.getElementById('chartAreaAcumuloCertificacao');
+  if (!canvas) return;
+  
+  if (graficosInstancias.chartAreaAcumuloCertificacao) {
+    graficosInstancias.chartAreaAcumuloCertificacao.destroy();
+  }
+  
+  // Agrupar por período usando dataPrevistoCertificacao (Previsto LD + 14) e dataCertificacao (CSV PRIMCERTIFICACAO)
+  const agrupamento = {};
+  const periodosSet = new Set();
+  
+  dados.forEach(d => {
+    // Certificação Prevista (Previsto LD + 14 dias)
+    if (d.dataPrevistoCertificacao) {
+      const periodo = `${d.dataPrevistoCertificacao.getFullYear()}-${String(d.dataPrevistoCertificacao.getMonth() + 1).padStart(2, '0')}`;
+      periodosSet.add(periodo);
+      if (!agrupamento[periodo]) {
+        agrupamento[periodo] = { previsto: 0, realizado: 0 };
+      }
+      agrupamento[periodo].previsto++;
+    }
+    
+    // Acúmulo Realizado (CSV DATA GR REC PRIMCERTIFICACAO)
+    if (d.dataCertificacao) {
+      const periodo = `${d.dataCertificacao.getFullYear()}-${String(d.dataCertificacao.getMonth() + 1).padStart(2, '0')}`;
+      periodosSet.add(periodo);
+      if (!agrupamento[periodo]) {
+        agrupamento[periodo] = { previsto: 0, realizado: 0 };
+      }
+      agrupamento[periodo].realizado++;
+    }
+  });
+  
+  const periodos = Array.from(periodosSet).sort();
+  
+  // Calcular acúmulo
+  let acumuloPrevisto = 0;
+  let acumuloRealizado = 0;
+  
+  const previstosAcum = [];
+  const realizadosAcum = [];
+  
+  periodos.forEach(periodo => {
+    acumuloPrevisto += agrupamento[periodo]?.previsto || 0;
+    acumuloRealizado += agrupamento[periodo]?.realizado || 0;
+    
+    previstosAcum.push(acumuloPrevisto);
+    realizadosAcum.push(acumuloRealizado);
+  });
+  
+  graficosInstancias.chartAreaAcumuloCertificacao = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: periodos,
+      datasets: [
+        {
+          label: 'Certificação Prevista (Previsto LD + 14)',
+          data: previstosAcum,
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          fill: true,
+          tension: 0.1
+        },
+        {
+          label: 'Acúmulo Realizado (CSV PRIMCERTIFICACAO)',
+          data: realizadosAcum,
+          borderColor: 'rgba(0, 126, 122, 1)',
+          backgroundColor: 'rgba(0, 126, 122, 0.2)',
+          fill: true,
+          tension: 0.1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          display: true
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Período'
+          }
+        },
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Acúmulo de Certificações'
+          }
         }
       }
     }

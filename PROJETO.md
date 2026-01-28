@@ -280,16 +280,16 @@ Arquivo XLSX com:
 
 ### Visualizações Disponíveis
 
-1. **Gráfico Temporal**: Previsto vs Realizado ao longo do tempo
+1. **Gráfico Temporal**: Previsto vs Realizado ao longo do tempo (barras lado a lado com tabela de resumo)
 2. **Mapa de Calor Temporal**: Intensidade por disciplina e período
-3. **Visualização 3D**: Disciplina × Projeto × Quantidade com cores por status
-4. **Mapa de Calor de Discrepâncias**: Atrasos médios por projeto/disciplina
-5. **Gráfico de Gantt**: Timeline de documentos com previsto e realizado
-6. **Distribuição por Disciplina**: Gráfico de pizza/roseta
-7. **Barras Empilhadas**: Status (Emitido/Não Emitido/Não Encontrado) por projeto
-8. **Gráfico de Dispersão**: Atraso vs Volume de documentos
-9. **Mapa de Calor de Emissão**: Taxa de emissão por projeto/disciplina
-10. **Gráfico de Área**: Acúmulo temporal de documentos
+3. **Distribuição por Disciplina**: Gráfico de rosca com número e percentual + tabela resumo
+4. **Visualização 3D**: Disciplina × Projeto × Quantidade com cores por status
+5. **Mapa de Calor de Taxa de Emissão**: Taxa de emissão por projeto/disciplina (máximo 100%)
+6. **Mapa de Calor de Taxa de Certificação**: Taxa de certificação por projeto/disciplina (máximo 100%)
+7. **Barras Empilhadas**: Status por projeto (Certificado, Emitido e não certificado, Não Emitido, Não Encontrado)
+8. **Evolução de Documentos por Período**: Timeline multi-linha com status
+9. **Acúmulo de Documentos**: Acúmulo previsto (LD) vs realizado (CSV PRIMEMISSAO)
+10. **Acúmulo de Certificação**: Certificação prevista (Previsto LD + 14) vs realizado (CSV PRIMCERTIFICACAO)
 
 ### Filtros Disponíveis
 

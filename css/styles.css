@@ -438,9 +438,17 @@ main {
 /* Tables */
 .table-container {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 500px; /* Altura máxima para tabelas */
   margin-top: 20px;
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
+}
+
+/* Tabelas específicas do pós-processamento - altura menor pois não são o foco */
+#sectionDados .table-container,
+.discrepancias-container .table-container {
+  max-height: 400px; /* Altura máxima menor para tabelas do pós-processamento */
 }
 
 table {
@@ -455,6 +463,9 @@ table {
 thead {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
   color: white;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 th, td {
@@ -468,9 +479,6 @@ th {
   text-transform: uppercase;
   font-size: 0.85em;
   letter-spacing: 0.8px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
 }
 
 tbody tr {

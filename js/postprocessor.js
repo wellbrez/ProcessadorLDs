@@ -9,16 +9,22 @@
 /**
  * @swagger
  * Normaliza número do vale para comparação
- * @param {string} noVale - Número do vale
+ * @param {string|number} noVale - Número do vale
  * @returns {string} Número do vale normalizado
  */
 function normalizarNumeroVale(noVale) {
-  if (!noVale || typeof noVale !== 'string') {
+  if (noVale === null || noVale === undefined || noVale === '') {
+    return '';
+  }
+  
+  // Converter para string se necessário
+  const noValeStr = String(noVale).trim();
+  if (!noValeStr) {
     return '';
   }
   
   // Remove espaços e converte para maiúsculas
-  let normalizado = noVale.trim().toUpperCase();
+  let normalizado = noValeStr.toUpperCase();
   
   // Remove espaços extras entre caracteres
   normalizado = normalizado.replace(/\s+/g, '');
@@ -27,6 +33,41 @@ function normalizarNumeroVale(noVale) {
   normalizado = normalizado.replace(/[_\s]/g, '-');
   
   return normalizado;
+}
+
+/**
+ * @swagger
+ * Calcula ordem numérica para ordenação de revisões
+ * -1 → 0, A-N → 1-26, 0+ → 27+
+ * @param {string|number} revisao - Valor da revisão
+ * @returns {number} Ordem numérica para ordenação
+ */
+function calcularOrdemRevisao(revisao) {
+  if (revisao === null || revisao === undefined || revisao === '') {
+    return 999; // Valores vazios vão para o final
+  }
+  
+  const revisaoStr = String(revisao).trim();
+  
+  // -1 → 0
+  if (revisaoStr === '-1') {
+    return 0;
+  }
+  
+  // Letras (A-Z) → 1 a 26
+  const letraMaiuscula = revisaoStr.toUpperCase();
+  if (letraMaiuscula.length === 1 && letraMaiuscula >= 'A' && letraMaiuscula <= 'Z') {
+    return letraMaiuscula.charCodeAt(0) - 'A'.charCodeAt(0) + 1; // A=1, B=2, ..., Z=26
+  }
+  
+  // Números (0, 1, 2, ...) → 27 + numero
+  const numero = parseInt(revisaoStr, 10);
+  if (!isNaN(numero) && numero >= 0) {
+    return 27 + numero; // 0=27, 1=28, 2=29, ...
+  }
+  
+  // Caso não reconhecido, retornar valor alto para ir para o final
+  return 999;
 }
 
 /**
@@ -90,6 +131,102 @@ function converterDataCSV(dataStr) {
   } catch (erro) {
     return null;
   }
+}
+
+/**
+ * @swagger
+ * Calcula EMISSAO para um grupo de linhas do mesmo vale
+ * Ordena por Número Vale e Revisão, então calcula PRIMEMISSAO/REVISAO/FICHA
+ * @param {Array} linhasCSV - Array de linhas do CSV para um vale
+ * @returns {Array} Array de linhas com campo EMISSAO calculado
+ */
+function calcularEmissaoParaVale(linhasCSV) {
+  if (!linhasCSV || !Array.isArray(linhasCSV) || linhasCSV.length === 0) {
+    return [];
+  }
+  
+  // Criar cópia das linhas para não modificar o original
+  const linhasOrdenadas = linhasCSV.map(linha => ({ ...linha }));
+  
+  // Ordenar por Número Vale (já agrupado, mas manter para garantir) e depois por Revisão
+  linhasOrdenadas.sort((a, b) => {
+    const noValeA = normalizarNumeroVale(a['Número Vale'] || a['Num. Vale Antigo'] || '');
+    const noValeB = normalizarNumeroVale(b['Número Vale'] || b['Num. Vale Antigo'] || '');
+    
+    // Primeiro ordenar por número do vale
+    if (noValeA !== noValeB) {
+      return noValeA.localeCompare(noValeB);
+    }
+    
+    // Depois ordenar por revisão usando calcularOrdemRevisao
+    const revisaoA = a['Revisão'] || '';
+    const revisaoB = b['Revisão'] || '';
+    const ordemA = calcularOrdemRevisao(revisaoA);
+    const ordemB = calcularOrdemRevisao(revisaoB);
+    
+    return ordemA - ordemB;
+  });
+  
+  // Calcular EMISSAO para cada linha
+  let primeiraLinhaNaoFicha = true;
+  
+  for (let i = 0; i < linhasOrdenadas.length; i++) {
+    const linha = linhasOrdenadas[i];
+    const revisao = String(linha['Revisão'] || '').trim();
+    
+    // Linhas com revisão -1 são FICHA
+    if (revisao === '-1') {
+      linha['EMISSAO'] = 'FICHA';
+    } else if (primeiraLinhaNaoFicha) {
+      // Primeira linha não-FICHA é PRIMEMISSAO
+      linha['EMISSAO'] = 'PRIMEMISSAO';
+      primeiraLinhaNaoFicha = false;
+    } else {
+      // Demais linhas não-FICHA são REVISAO
+      linha['EMISSAO'] = 'REVISAO';
+    }
+  }
+  
+  return linhasOrdenadas;
+}
+
+/**
+ * @swagger
+ * Calcula PRIMCERTIFICACAO para um grupo de linhas do mesmo vale
+ * Encontra primeira linha com revisão numérica, tp≠B, Final.Devol=APR
+ * @param {Array} linhasCSV - Array de linhas do CSV já ordenadas (deve ter sido processado por calcularEmissaoParaVale)
+ * @returns {Array} Array de linhas com campo PRIMCERTIFICACAO calculado
+ */
+function calcularPrimCertificacaoParaVale(linhasCSV) {
+  if (!linhasCSV || !Array.isArray(linhasCSV) || linhasCSV.length === 0) {
+    return linhasCSV || [];
+  }
+  
+  // Criar cópia das linhas para não modificar o original
+  const linhasComCertificacao = linhasCSV.map(linha => ({ ...linha }));
+  
+  // Encontrar primeira linha que atende aos critérios
+  for (let i = 0; i < linhasComCertificacao.length; i++) {
+    const linha = linhasComCertificacao[i];
+    const revisao = String(linha['Revisão'] || '').trim();
+    const tpEmissao = String(linha['Tp. Emissão'] || '').trim().toUpperCase();
+    const finalDevol = String(linha['Final. Devol'] || '').trim().toUpperCase();
+    
+    // Verificar se revisão é numérica (não alfabética e não -1)
+    const revisaoNumero = parseInt(revisao, 10);
+    const ehRevisaoNumerica = !isNaN(revisaoNumero) && revisaoNumero >= 0 && revisao !== '-1';
+    
+    // Verificar critérios para PRIMCERTIFICACAO
+    if (ehRevisaoNumerica && tpEmissao !== 'B' && finalDevol === 'APR') {
+      linha['PRIMCERTIFICACAO'] = true;
+      // Marcar apenas a primeira que atende aos critérios
+      break;
+    } else {
+      linha['PRIMCERTIFICACAO'] = false;
+    }
+  }
+  
+  return linhasComCertificacao;
 }
 
 /**
@@ -202,24 +339,21 @@ function verificarEmissao(linhasCSV) {
  * @swagger
  * Verifica se número do vale existe no CSV
  * @param {string} noVale - Número do vale
- * @param {Map} indiceCSV - Índice do CSV por número do vale
+ * @param {Map} indiceCSV - Índice do CSV por número do vale (armazena arrays de linhas)
  * @returns {Object} Objeto com boolean encontrado e linhas do CSV
  */
 function validarValeNoCSV(noVale, indiceCSV) {
   if (!noVale || !indiceCSV) {
-    return { encontrado: false, linhasCSV: null };
+    return { encontrado: false, linhasCSV: [] };
   }
   
   const valeNormalizado = normalizarNumeroVale(noVale);
-  const linhaCSV = indiceCSV.get(valeNormalizado);
+  const linhasCSV = indiceCSV.get(valeNormalizado);
   
-  // linhaCSV pode ser um objeto único ou null
-  // Converter para array para compatibilidade com código existente
-  const linhasCSV = linhaCSV ? [linhaCSV] : [];
-  
+  // linhasCSV agora é sempre um array ou undefined
   return {
-    encontrado: !!linhaCSV,
-    linhasCSV: linhaCSV ? [linhaCSV] : [] // Retornar como array para compatibilidade
+    encontrado: !!linhasCSV && Array.isArray(linhasCSV) && linhasCSV.length > 0,
+    linhasCSV: Array.isArray(linhasCSV) ? linhasCSV : []
   };
 }
 
@@ -235,13 +369,15 @@ function extrairDadosCSV(linhaCSV) {
   }
   
   // A linha pode vir já reduzida (apenas campos necessários) ou completa
+  // EMISSAO agora é calculado dinamicamente, não vem do CSV original
   return {
     dataGRRec: linhaCSV['Data GR Rec'] || linhaCSV['Data GR REC'] || linhaCSV['Data GR Rec.'] || null,
-    finDev: linhaCSV['Fin. Dev'] || linhaCSV['Final. Devol'] || linhaCSV['Finalidade de devolução'] || null,
+    finDev: linhaCSV['Final. Devol'] || linhaCSV['Finalidade de devolução'] || null,
     projetoSE: linhaCSV['Projeto/SE'] || linhaCSV['Projeto / SE'] || null,
     empresa: linhaCSV['Empresa'] || null,
     title: linhaCSV['Title'] || linhaCSV['Título'] || null,
-    emissao: linhaCSV['EMISSAO'] || linhaCSV['Emissão'] || linhaCSV['emissao'] || null,
+    emissao: linhaCSV['EMISSAO'] || null, // Campo calculado dinamicamente
+    primCertificacao: linhaCSV['PRIMCERTIFICACAO'] === true || false, // Campo calculado dinamicamente
     grRecebimento: linhaCSV['GR Recebimento'] || linhaCSV['GR Receb.'] || null,
     status: linhaCSV['Status'] || null,
     fase: linhaCSV['Fase'] || null,
@@ -265,7 +401,8 @@ function coletarValesDasLDs(dadosLDs) {
         // Apenas coletar vales de linhas válidas
         if (validarLinha(linha).valida && linha['NO VALE']) {
           const valeNormalizado = normalizarNumeroVale(linha['NO VALE']);
-          if (valeNormalizado) {
+          // Adicionar ao Set apenas se a normalização retornar uma string não vazia
+          if (valeNormalizado && valeNormalizado !== '') {
             valesSet.add(valeNormalizado);
           }
         }
@@ -325,14 +462,22 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
     
     // Função para extrair apenas campos necessários (economiza memória)
     function extrairCamposNecessarios(linha) {
+      // Extrair número do vale usando mesma lógica de busca
+      let noVale = linha['Número Vale'];
+      if (!noVale || String(noVale).trim() === '') {
+        noVale = linha['Num. Vale Antigo'];
+      }
+      
       return {
-        'Número Vale': linha['Número Vale'] || linha['Num. Vale Antigo'] || linha['NUMEROABAIXO'] || null,
+        'Número Vale': noVale || null,
+        'Num. Vale Antigo': linha['Num. Vale Antigo'] || null,
         'Data GR Rec': linha['Data GR Rec'] || linha['Data GR REC'] || linha['Data GR Rec.'] || null,
-        'Fin. Dev': linha['Fin. Dev'] || linha['Final. Devol'] || linha['Finalidade de devolução'] || null,
+        'Final. Devol': linha['Final. Devol'] || linha['Finalidade de devolução'] || null,
+        'Revisão': linha['Revisão'] || null,
+        'Tp. Emissão': linha['Tp. Emissão'] || linha['Tipo Emissão'] || linha['Tipo Emissao'] || null,
         'Projeto/SE': linha['Projeto/SE'] || linha['Projeto / SE'] || null,
         'Empresa': linha['Empresa'] || null,
         'Title': linha['Title'] || linha['Título'] || null,
-        'EMISSAO': linha['EMISSAO'] || linha['Emissão'] || linha['emissao'] || null,
         'GR Recebimento': linha['GR Recebimento'] || linha['GR Receb.'] || null,
         'Status': linha['Status'] || null,
         'Fase': linha['Fase'] || null,
@@ -374,53 +519,31 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
           const linha = linhasChunk[i];
           if (!linha) continue;
           
-          // Tentar encontrar número do vale - otimizado para buscar na ordem mais provável
+          // Tentar encontrar número do vale - usar apenas 'Número Vale' e 'Num. Vale Antigo'
           let noVale = linha['Número Vale'];
-          if (!noVale || !String(noVale).trim()) {
-            noVale = linha['NUMEROABAIXO'] || 
-                     linha['Num. Vale Antigo'] || 
-                     linha['Número Vale Antigo'] ||
-                     linha['Numero Vale'] ||
-                     linha['numero_vale'] ||
-                     null;
+          if (!noVale || String(noVale).trim() === '') {
+            noVale = linha['Num. Vale Antigo'];
           }
           
-          if (noVale && String(noVale).trim()) {
-            const valeNormalizado = normalizarNumeroVale(String(noVale));
+          // Normalizar o vale para comparação
+          const valeNormalizado = noVale ? normalizarNumeroVale(noVale) : '';
+          
+          // FILTRO PRINCIPAL: Só processar se o vale está na lista de vales das LDs
+          // Esta verificação é O(1) com Set, muito rápida
+          if (valeNormalizado && valeNormalizado !== '' && valesParaBuscar.has(valeNormalizado)) {
+            linhasProcessadas++;
             
-            // FILTRO PRINCIPAL: Só processar se o vale está na lista de vales das LDs
-            // Esta verificação é O(1) com Set, muito rápida
-            if (valeNormalizado && valesParaBuscar.has(valeNormalizado)) {
-              linhasProcessadas++;
-              
-              // Extrair apenas campos necessários para economizar memória
-              const linhaReduzida = extrairCamposNecessarios(linha);
-              
-              // Para economizar memória máxima, manter apenas 1 linha por vale
-              // Priorizar linha com PrimEmissao se existir
-              if (!indiceCSV.has(valeNormalizado)) {
-                // Primeira linha encontrada para este vale
-                indiceCSV.set(valeNormalizado, linhaReduzida);
-                valesEncontrados++;
-                
-                // Se já encontramos todos os vales, podemos parar mais cedo (otimização)
-                if (valesEncontrados === totalValesParaBuscar) {
-                  // Continuar processando para garantir que temos PrimEmissao quando disponível
-                  // mas podemos acelerar ainda mais
-                }
-              } else {
-                const linhaExistente = indiceCSV.get(valeNormalizado);
-                
-                // Verificar se já temos PrimEmissao
-                const temPrimEmissao = (linhaExistente['EMISSAO'] || '').toString().trim().toUpperCase() === 'PRIMEMISSAO';
-                const linhaTemPrimEmissao = (linhaReduzida['EMISSAO'] || '').toString().trim().toUpperCase() === 'PRIMEMISSAO';
-                
-                if (linhaTemPrimEmissao && !temPrimEmissao) {
-                  // Se esta linha tem PrimEmissao e não temos nenhuma, substituir
-                  indiceCSV.set(valeNormalizado, linhaReduzida);
-                }
-                // Caso contrário, manter a existente (já temos PrimEmissao ou primeira linha encontrada)
-              }
+            // Extrair apenas campos necessários para economizar memória
+            const linhaReduzida = extrairCamposNecessarios(linha);
+            
+            // Armazenar todas as linhas por vale (necessário para ordenação e cálculo de EMISSAO)
+            if (!indiceCSV.has(valeNormalizado)) {
+              // Primeira linha encontrada para este vale - criar array
+              indiceCSV.set(valeNormalizado, [linhaReduzida]);
+              valesEncontrados++;
+            } else {
+              // Adicionar linha ao array existente
+              indiceCSV.get(valeNormalizado).push(linhaReduzida);
             }
           }
         }
@@ -474,6 +597,18 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
         }
       },
       complete: function(results) {
+        // Processar cada grupo de linhas para calcular EMISSAO e PRIMCERTIFICACAO
+        indiceCSV.forEach((linhasVale, valeNormalizado) => {
+          // Calcular EMISSAO para este vale
+          const linhasComEmissao = calcularEmissaoParaVale(linhasVale);
+          
+          // Calcular PRIMCERTIFICACAO para este vale
+          const linhasComCertificacao = calcularPrimCertificacaoParaVale(linhasComEmissao);
+          
+          // Atualizar o índice com as linhas processadas
+          indiceCSV.set(valeNormalizado, linhasComCertificacao);
+        });
+        
         // Garantir que o progresso final seja atualizado com o número real de linhas
         if (callbackProgresso) {
           const percentualVales = totalValesParaBuscar > 0 
@@ -628,14 +763,13 @@ function processarPosProcessamento(dadosLDs, indiceCSV, callbackProgresso) {
     let comparacaoData = { iguais: null, dataCSV: null, dataLD: null, diferenca: null, realizado2Original: null };
     
     // Determinar qual linha usar (PrimEmissao tem prioridade)
+    // Agora linhasCSV sempre é um array
     let linhaCSVPrincipal = null;
     if (emissaoInfo && emissaoInfo.linhaPrimEmissao) {
       linhaCSVPrincipal = emissaoInfo.linhaPrimEmissao;
-    } else if (validacaoVale && validacaoVale.encontrado && validacaoVale.linhasCSV) {
-      // Se linhasCSV é array, pegar primeiro elemento; se é objeto único, usar diretamente
-      linhaCSVPrincipal = Array.isArray(validacaoVale.linhasCSV) && validacaoVale.linhasCSV.length > 0
-        ? validacaoVale.linhasCSV[0]
-        : (!Array.isArray(validacaoVale.linhasCSV) ? validacaoVale.linhasCSV : null);
+    } else if (validacaoVale && validacaoVale.encontrado && validacaoVale.linhasCSV && Array.isArray(validacaoVale.linhasCSV) && validacaoVale.linhasCSV.length > 0) {
+      // Pegar primeira linha do array
+      linhaCSVPrincipal = validacaoVale.linhasCSV[0];
     }
     
     if (validacaoVale.encontrado && linhaCSVPrincipal) {
@@ -650,7 +784,7 @@ function processarPosProcessamento(dadosLDs, indiceCSV, callbackProgresso) {
       }
     }
     
-    // Extrair dados do CSV
+    // Extrair dados do CSV (inclui primCertificacao calculado)
     const dadosCSV = linhaCSVPrincipal ? extrairDadosCSV(linhaCSVPrincipal) : {};
     
     // Adicionar resultado
@@ -667,6 +801,8 @@ function processarPosProcessamento(dadosLDs, indiceCSV, callbackProgresso) {
         projetoSE: dadosCSV.projetoSE,
         empresa: dadosCSV.empresa,
         title: dadosCSV.title,
+        emissao: dadosCSV.emissao, // Campo calculado dinamicamente
+        primCertificacao: dadosCSV.primCertificacao, // Campo calculado dinamicamente
         grRecebimento: dadosCSV.grRecebimento,
         status: dadosCSV.status,
         fase: dadosCSV.fase,

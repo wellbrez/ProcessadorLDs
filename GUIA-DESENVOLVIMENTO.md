@@ -537,8 +537,8 @@ Módulo dedicado para criação e gerenciamento de visualizações avançadas.
 - Plotly.js 2.27.0 para gráficos 3D e mapas de calor
 
 **Visualizações disponíveis:**
-- 6 gráficos Chart.js (temporal, Gantt, distribuição, barras empilhadas, dispersão, área)
-- 4 visualizações Plotly.js (mapas de calor e 3D)
+- 6 gráficos Chart.js (temporal com barras, distribuição com tabela, barras empilhadas, evolução temporal, acúmulo de documentos, acúmulo de certificação)
+- 4 visualizações Plotly.js (mapa de calor temporal, 3D, mapa de calor de emissão, mapa de calor de certificação)
 
 **Gerenciamento de memória:**
 - Destruição de gráficos ao trocar de aba

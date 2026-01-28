@@ -192,7 +192,6 @@ async function processarArquivos() {
     return;
   }
   
-  const modoTeste = document.getElementById('chkModoTeste').checked;
   btnProcessar.disabled = true;
   progressContainer.classList.add('active');
   resultadosProcessamento = [];
@@ -206,14 +205,6 @@ async function processarArquivos() {
       
       const resultado = await processarArquivo(arquivo);
       resultadosProcessamento.push(resultado);
-      
-      // Modo teste: informações de extração (apenas se ativado)
-      if (modoTeste && resultado.processarNomeERevisao) {
-        const info = resultado.processarNomeERevisao;
-        console.log(`\n=== ${arquivo.name} ===`);
-        console.log(`LD: ${resultado.ld || '(não encontrado)'} | Revisão: ${resultado.revisao || '(não encontrada)'}`);
-        console.log(`Fontes LD: ${info.totalFontesLD} | Fontes Revisão: ${info.totalFontesRevisao}`);
-      }
     }
     
     // Validar resultados
@@ -221,11 +212,6 @@ async function processarArquivos() {
     
     // Exibir resultados
     exibirResultados();
-    
-    // Se modo teste, exibir resumo no console
-    if (modoTeste) {
-      exibirResumoTeste();
-    }
     
     atualizarProgresso(100, 'Processamento concluído!');
     
@@ -242,19 +228,6 @@ async function processarArquivos() {
   }
 }
 
-/**
- * @swagger
- * Exibe resumo dos testes de extração no console (apenas em modo teste)
- */
-function exibirResumoTeste() {
-  if (!modoTeste) return;
-  
-  const total = resultadosProcessamento.length;
-  const comErro = resultadosProcessamento.filter(r => r.erro).length;
-  const semErro = total - comErro;
-  
-  console.log(`\n📊 Resumo: ${total} arquivos | ${semErro} processados | ${comErro} com erro\n`);
-}
 
 /**
  * @swagger
@@ -1468,29 +1441,42 @@ function popularFiltrosDashboard(dadosMesclados) {
 function aplicarFiltrosDashboard() {
   if (!resultadoPosProcessamento || !resultadosProcessamento) return;
   
-  // Coletar valores dos filtros
-  const filterProjeto = document.getElementById('filterProjeto');
-  const filterEmpresa = document.getElementById('filterEmpresa');
-  const filterLD = document.getElementById('filterLD');
-  const filterDisciplina = document.getElementById('filterDisciplina');
-  const filterFormato = document.getElementById('filterFormato');
-  const filterDataInicio = document.getElementById('filterDataInicio');
-  const filterDataFim = document.getElementById('filterDataFim');
+  // Coletar valores dos filtros usando função melhorada (se disponível)
+  const coletarFiltro = typeof coletarValoresFiltro === 'function' 
+    ? coletarValoresFiltro 
+    : function(select) {
+        if (!select) return null;
+        const values = Array.from(select.selectedOptions)
+          .map(o => o.value)
+          .filter(v => v);
+        const temTodos = Array.from(select.selectedOptions).some(o => o.value === '');
+        return (temTodos || values.length === 0) ? null : values;
+      };
   
   const filtros = {
-    projetos: filterProjeto ? Array.from(filterProjeto.selectedOptions).map(o => o.value).filter(v => v) : [],
-    empresas: filterEmpresa ? Array.from(filterEmpresa.selectedOptions).map(o => o.value).filter(v => v) : [],
-    lds: filterLD ? Array.from(filterLD.selectedOptions).map(o => o.value).filter(v => v) : [],
-    disciplinas: filterDisciplina ? Array.from(filterDisciplina.selectedOptions).map(o => o.value).filter(v => v) : [],
-    formatos: filterFormato ? Array.from(filterFormato.selectedOptions).map(o => o.value).filter(v => v) : [],
-    dataInicio: filterDataInicio ? filterDataInicio.value : null,
-    dataFim: filterDataFim ? filterDataFim.value : null
+    projetos: coletarFiltro(document.getElementById('filterProjeto')),
+    empresas: coletarFiltro(document.getElementById('filterEmpresa')),
+    lds: coletarFiltro(document.getElementById('filterLD')),
+    disciplinas: coletarFiltro(document.getElementById('filterDisciplina')),
+    formatos: coletarFiltro(document.getElementById('filterFormato')),
+    dataInicio: document.getElementById('filterDataInicio')?.value || null,
+    dataFim: document.getElementById('filterDataFim')?.value || null
   };
   
   // Preparar dados mesclados
   if (typeof prepararDadosMesclados === 'function' && typeof aplicarFiltros === 'function') {
     const dadosMesclados = prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamento);
     const dadosFiltrados = aplicarFiltros(dadosMesclados, filtros);
+    
+    // Mostrar mensagem se nenhum resultado encontrado
+    if (dadosFiltrados.length === 0 && dadosMesclados.length > 0) {
+      console.warn('Nenhum resultado encontrado com os filtros aplicados');
+      // Opcional: mostrar mensagem ao usuário
+      const statsContainer = document.getElementById('dashboardStats');
+      if (statsContainer) {
+        statsContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">Nenhum resultado encontrado com os filtros aplicados</div>';
+      }
+    }
     
     // Atualizar gráficos
     if (typeof atualizarTodosGraficos === 'function') {
@@ -1529,25 +1515,28 @@ function limparFiltrosDashboard() {
  * Salva dados do pós-processamento no navegador
  */
 function salvarDadosPosProcessamento() {
-  if (!resultadoPosProcessamento || !resultadosProcessamento || !resultadoValidacao) {
-    console.log('Dados não disponíveis para salvar:', {
+  // Verificar dados mínimos necessários (resultadoValidacao é opcional)
+  if (!resultadoPosProcessamento || !resultadosProcessamento) {
+    const mensagem = 'Dados não disponíveis para salvar. É necessário processar as LDs e realizar o pós-processamento primeiro.';
+    console.warn('Dados não disponíveis para salvar:', {
       temPosProcessamento: !!resultadoPosProcessamento,
       temResultadosProcessamento: !!resultadosProcessamento,
       temResultadoValidacao: !!resultadoValidacao
     });
+    alert(mensagem);
     return;
   }
   
   try {
     // Calcular hash simples do CSV (usando timestamp como proxy)
-    const hashCSV = indiceCSVGerencial ? `csv_${Date.now()}` : null;
+    const hashCSV = typeof indiceCSVGerencial !== 'undefined' && indiceCSVGerencial ? `csv_${Date.now()}` : null;
     
     const dadosParaSalvar = {
       dataProcessamento: new Date().toISOString(),
       resultadoPosProcessamento: resultadoPosProcessamento,
       hashCSV: hashCSV,
       resultadosProcessamento: resultadosProcessamento,
-      resultadoValidacao: resultadoValidacao
+      resultadoValidacao: resultadoValidacao || null // Opcional
     };
     
     // Serializar dados
@@ -1557,7 +1546,10 @@ function salvarDadosPosProcessamento() {
     const tamanhoMB = new Blob([dadosSerializados]).size / (1024 * 1024);
     if (tamanhoMB > 5) {
       console.warn('Dados muito grandes para salvar no localStorage:', tamanhoMB.toFixed(2), 'MB');
-      alert(`Aviso: Os dados são muito grandes (${tamanhoMB.toFixed(2)} MB) e podem não ser salvos completamente. Limite recomendado: 5 MB.`);
+      const continuar = confirm(`Aviso: Os dados são muito grandes (${tamanhoMB.toFixed(2)} MB) e podem não ser salvos completamente. Limite recomendado: 5 MB.\n\nDeseja continuar mesmo assim?`);
+      if (!continuar) {
+        return;
+      }
     }
     
     // Salvar no localStorage
@@ -1566,11 +1558,25 @@ function salvarDadosPosProcessamento() {
     // Atualizar interface
     exibirInfoDadosSalvos();
     
+    // Feedback visual
+    const btnSalvar = document.getElementById('btnSalvarDadosAtuais');
+    if (btnSalvar) {
+      const textoOriginal = btnSalvar.textContent;
+      btnSalvar.textContent = '✓ Salvo!';
+      btnSalvar.style.backgroundColor = '#28a745';
+      setTimeout(() => {
+        btnSalvar.textContent = textoOriginal;
+        btnSalvar.style.backgroundColor = '';
+      }, 2000);
+    }
+    
     console.log('Dados salvos com sucesso no localStorage');
   } catch (erro) {
     console.error('Erro ao salvar dados:', erro);
     if (erro.name === 'QuotaExceededError') {
       alert('Erro: Espaço insuficiente no navegador. Limpe dados salvos ou use outro navegador.');
+    } else {
+      alert(`Erro ao salvar dados: ${erro.message}`);
     }
   }
 }
@@ -1589,28 +1595,52 @@ function carregarDadosPosProcessamento() {
     
     const dados = JSON.parse(dadosSalvos);
     
+    // Validar estrutura dos dados
+    if (!dados.resultadoPosProcessamento || !dados.resultadosProcessamento) {
+      alert('Erro: Dados salvos estão incompletos ou corrompidos.');
+      console.error('Dados incompletos:', dados);
+      return;
+    }
+    
     // Restaurar dados
     resultadoPosProcessamento = dados.resultadoPosProcessamento;
     resultadosProcessamento = dados.resultadosProcessamento;
-    resultadoValidacao = dados.resultadoValidacao;
+    resultadoValidacao = dados.resultadoValidacao || null; // Opcional
     
     // Tornar global
     if (typeof window !== 'undefined') {
       window.resultadoPosProcessamento = resultadoPosProcessamento;
+      window.resultadosProcessamento = resultadosProcessamento;
+      if (resultadoValidacao) {
+        window.resultadoValidacao = resultadoValidacao;
+      }
     }
     
     // Atualizar interface
     exibirResultados();
     exibirResultadosPosProcessamento();
     
+    // Garantir que dashboard seja inicializado se necessário
+    const sectionDashboard = document.getElementById('sectionDashboard');
+    if (sectionDashboard && !sectionDashboard.classList.contains('hidden')) {
+      // Se dashboard já está visível, inicializar
+      if (typeof inicializarDashboard === 'function') {
+        inicializarDashboard();
+      }
+    }
+    
+    // Atualizar informações dos dados salvos
+    exibirInfoDadosSalvos();
+    
     // Mostrar mensagem de sucesso
     const dataProcessamento = new Date(dados.dataProcessamento);
-    alert(`Dados carregados com sucesso!\n\nProcessados em: ${dataProcessamento.toLocaleString('pt-BR')}`);
+    const totalDocs = dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0;
+    alert(`Dados carregados com sucesso!\n\nProcessados em: ${dataProcessamento.toLocaleString('pt-BR')}\nTotal de documentos: ${totalDocs}`);
     
     console.log('Dados carregados com sucesso do localStorage');
   } catch (erro) {
     console.error('Erro ao carregar dados:', erro);
-    alert('Erro ao carregar dados salvos. Os dados podem estar corrompidos.');
+    alert(`Erro ao carregar dados salvos: ${erro.message}\n\nOs dados podem estar corrompidos.`);
   }
 }
 
@@ -1646,11 +1676,14 @@ function exibirInfoDadosSalvos() {
     if (dadosSalvos) {
       const dados = JSON.parse(dadosSalvos);
       const dataProcessamento = new Date(dados.dataProcessamento);
+      const totalDocs = dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0;
+      const tamanhoMB = new Blob([dadosSalvos]).size / (1024 * 1024);
       
       container.style.display = 'block';
       info.innerHTML = `
         <strong>Último processamento:</strong> ${dataProcessamento.toLocaleString('pt-BR')}<br>
-        <strong>Total de documentos:</strong> ${dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0}
+        <strong>Total de documentos:</strong> ${totalDocs}<br>
+        <strong>Tamanho:</strong> ${tamanhoMB.toFixed(2)} MB
       `;
     } else {
       container.style.display = 'none';

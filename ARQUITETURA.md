@@ -230,7 +230,9 @@ function exportarPosProcessamentoDados(resultadoPosProcessamento, formato, nomeA
 **Responsabilidades:**
 - Carregamento e processamento de CSV gerencial (otimizado para arquivos grandes)
 - Validação de vales contra extrato oficial
-- Verificação de emissão (PrimEmissao)
+- Cálculo dinâmico de EMISSAO (PRIMEMISSAO, REVISAO, FICHA) baseado em ordenação de revisões
+- Cálculo dinâmico de PRIMCERTIFICACAO (primeira certificação por vale)
+- Verificação de emissão usando EMISSAO calculado
 - Comparação de datas (Data GR Rec vs REALIZADO 2)
 - Coleta de vales das LDs para filtragem prévia
 
@@ -326,16 +328,16 @@ function destruirGraficos()
 ```
 
 **Visualizações Implementadas:**
-- `criarGraficoTemporal()` - Line Chart (Chart.js)
+- `criarGraficoTemporal()` - Bar Chart lado a lado com tabela resumo (Chart.js)
 - `criarMapaCalorTemporal()` - Heatmap 2D (Plotly.js)
+- `criarGraficoDistribuicao()` - Doughnut Chart com número/percentual + tabela resumo (Chart.js)
 - `criarGrafico3D()` - 3D Scatter (Plotly.js)
-- `criarMapaCalorDiscrepancias()` - Heatmap 2D (Plotly.js)
-- `criarGraficoGantt()` - Bar Chart horizontal (Chart.js)
-- `criarGraficoDistribuicao()` - Doughnut Chart (Chart.js)
-- `criarGraficoBarrasEmpilhadas()` - Stacked Bar Chart (Chart.js)
-- `criarGraficoDispersao()` - Scatter Chart (Chart.js)
-- `criarMapaCalorEmissao()` - Heatmap 2D (Plotly.js)
-- `criarGraficoAreaAcumulo()` - Area Chart (Chart.js)
+- `criarMapaCalorEmissao()` - Heatmap 2D com máximo 100% (Plotly.js)
+- `criarMapaCalorCertificacao()` - Heatmap 2D com máximo 100% (Plotly.js)
+- `criarGraficoBarrasEmpilhadas()` - Stacked Bar Chart por status (Chart.js)
+- `criarGraficoGantt()` - Multi-line Chart de evolução temporal (Chart.js)
+- `criarGraficoAreaAcumulo()` - Line Chart de acúmulo de documentos (Chart.js)
+- `criarGraficoAreaAcumuloCertificacao()` - Line Chart de acúmulo de certificação (Chart.js)
 
 ### 7. Aplicação Principal (app.js)
 

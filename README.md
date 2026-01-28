@@ -85,11 +85,13 @@ ProcessadorLDs/
 ### Dashboard Profissional
 - 10 visualizações avançadas (gráficos 2D, 3D e mapas de calor)
 - Filtros avançados (Projeto, Empresa, LD, Disciplina, Formato, Período)
-- Análise temporal de Previsto vs Realizado
+- Análise temporal de Previsto vs Realizado (barras lado a lado com tabela de resumo)
 - Visualização 3D de Disciplina × Projeto × Quantidade
-- Mapas de calor para análise de discrepâncias e taxas de emissão
-- Gráfico de Gantt para timeline de documentos
-- Análise de distribuição e dispersão
+- Mapas de calor para taxas de emissão e certificação (máximo 100%)
+- Gráfico de evolução temporal de documentos
+- Análise de distribuição por disciplina (com número e percentual)
+- Análise de acúmulo de documentos e certificação
+- Integração de status de certificação em todos os gráficos
 
 ### Persistência de Dados
 - Salvamento automático após processamento

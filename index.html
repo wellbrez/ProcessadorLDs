@@ -74,13 +74,6 @@
           <div class="upload-hint">Formatos suportados: CSV, XLSX</div>
           <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls">
         </div>
-        <div class="modo-teste-container">
-          <label>
-            <input type="checkbox" id="chkModoTeste">
-            <strong>Modo Teste:</strong>
-            <span>Mostrar detalhes de extração de LD e Revisão</span>
-          </label>
-        </div>
         <div class="buttons-group">
           <button class="btn btn-primary" id="btnProcessar" disabled>Processar</button>
           <button class="btn btn-secondary" id="btnLimpar">Limpar</button>
@@ -191,7 +184,7 @@
         <div class="pos-processamento-container">
           <div class="upload-csv-area" id="uploadCSVArea">
             <div class="upload-icon">📊</div>
-            <div class="upload-text" id="csvUploadText">Selecione o CSV Gerencial Consolidado</div>
+            <div class="upload-text" id="csvUploadText">Selecione o CSV Gerencial Consolidado (GA)</div>
             <div class="upload-hint">Arquivo: RELATORIO_GERENCIAL_CONSOLIDADO_*.csv</div>
             <input type="file" id="csvInput" accept=".csv">
           </div>
@@ -331,8 +324,13 @@
                 <h3>Previsto vs Realizado (Temporal)</h3>
                 <button class="btn-icon" title="Exportar gráfico">📥</button>
               </div>
-              <div class="chart-container">
-                <canvas id="chartTemporal"></canvas>
+              <div class="chart-container" style="display: flex; gap: 20px; align-items: flex-start;">
+                <div style="flex: 2;">
+                  <canvas id="chartTemporal"></canvas>
+                </div>
+                <div style="flex: 1; min-width: 250px;">
+                  <!-- Tabela de resumo será inserida aqui via JavaScript -->
+                </div>
               </div>
             </div>
             
@@ -355,6 +353,7 @@
               </div>
               <div class="chart-container">
                 <canvas id="chartDistribuicao"></canvas>
+                <!-- Tabela de resumo será inserida aqui via JavaScript -->
               </div>
             </div>
             
@@ -369,18 +368,7 @@
               </div>
             </div>
             
-            <!-- Gráfico 5: Mapa de Calor Discrepâncias -->
-            <div class="chart-card half-width">
-              <div class="chart-header">
-                <h3>Mapa de Calor: Discrepâncias de Data</h3>
-                <button class="btn-icon" title="Exportar gráfico">📥</button>
-              </div>
-              <div class="chart-container">
-                <div id="chartMapaCalorDiscrepancias"></div>
-              </div>
-            </div>
-            
-            <!-- Gráfico 6: Mapa de Calor Taxa de Emissão -->
+            <!-- Gráfico 5: Mapa de Calor Taxa de Emissão -->
             <div class="chart-card half-width">
               <div class="chart-header">
                 <h3>Mapa de Calor: Taxa de Emissão</h3>
@@ -388,6 +376,17 @@
               </div>
               <div class="chart-container">
                 <div id="chartMapaCalorEmissao"></div>
+              </div>
+            </div>
+            
+            <!-- Gráfico 6: Mapa de Calor Taxa de Certificação -->
+            <div class="chart-card half-width">
+              <div class="chart-header">
+                <h3>Mapa de Calor: Taxa de Certificação</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <div id="chartMapaCalorCertificacao"></div>
               </div>
             </div>
             
@@ -402,29 +401,18 @@
               </div>
             </div>
             
-            <!-- Gráfico 8: Dispersão Atraso vs Volume -->
-            <div class="chart-card one-third">
-              <div class="chart-header">
-                <h3>Atraso vs Volume</h3>
-                <button class="btn-icon" title="Exportar gráfico">📥</button>
-              </div>
-              <div class="chart-container">
-                <canvas id="chartDispersao"></canvas>
-              </div>
-            </div>
-            
-            <!-- Gráfico 9: Gantt Timeline -->
+            <!-- Gráfico 8: Gantt Timeline -->
             <div class="chart-card full-width">
               <div class="chart-header">
-                <h3>Timeline de Documentos (Gantt)</h3>
+                <h3>Evolução de Documentos por Período</h3>
                 <button class="btn-icon" title="Exportar gráfico">📥</button>
               </div>
-              <div class="chart-container" style="height: 600px; overflow-x: auto;">
+              <div class="chart-container" style="height: 400px;">
                 <canvas id="chartGantt"></canvas>
               </div>
             </div>
             
-            <!-- Gráfico 10: Área Acúmulo Temporal -->
+            <!-- Gráfico 9: Área Acúmulo Temporal -->
             <div class="chart-card full-width">
               <div class="chart-header">
                 <h3>Acúmulo de Documentos (Temporal)</h3>
@@ -432,6 +420,17 @@
               </div>
               <div class="chart-container">
                 <canvas id="chartAreaAcumulo"></canvas>
+              </div>
+            </div>
+            
+            <!-- Gráfico 10: Área Acúmulo Certificação -->
+            <div class="chart-card full-width">
+              <div class="chart-header">
+                <h3>Acúmulo de Certificação (Temporal)</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <canvas id="chartAreaAcumuloCertificacao"></canvas>
               </div>
             </div>
           </div>
