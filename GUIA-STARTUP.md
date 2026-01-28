@@ -1,7 +1,7 @@
 # GUIA-STARTUP.md - ProcessadorLDs
 
 **Autor:** Wellington Bravin  
-**Data:** 21/01/2026
+**Data:** 26/01/2026
 
 ## Guia de Inicialização
 
@@ -65,11 +65,18 @@ A interface exibirá:
 - **Estatísticas**: Total de arquivos, processados, com erro
 - **Dados Processados**: Tabela com dados extraídos
 - **Status por Arquivo**: Status de cada LD processada
-  - Cada arquivo possui um botão "Ver Detalhes ProcessarNomeERevisao" que mostra:
+  - Cada arquivo possui um botão "Ver Detalhes" que mostra:
     - LD Final e Revisão Final extraídas
     - Lista de todas as fontes LD encontradas (Nome arquivo, CAPA/ROSTO, Folha LD)
     - Lista de todas as fontes de Revisão encontradas
     - Contadores de quantas fontes foram encontradas
+    - **Inconsistências do Pós-Processamento** (após validação):
+      - Vales não encontrados no CSV gerencial
+      - Vales não emitidos (encontrados mas sem PrimEmissao)
+      - Discrepâncias de data (Data GR Rec vs REALIZADO 2)
+    - Estatísticas de processamento
+    - Linhas com erro (se houver)
+  - Badges visuais no status indicando inconsistências do pós-processamento
 - **Problemas**: Lista de problemas encontrados (incluindo inconsistências de LD/Revisão)
 
 ### 5. Exportar Resultados
@@ -81,6 +88,45 @@ A interface exibirá:
 
 2. Clique em "Exportar"
 3. O arquivo será baixado automaticamente
+
+### 6. Pós-Processamento com CSV Gerencial
+
+1. Após processar as LDs, você verá a seção "Pós-Processamento com CSV Gerencial"
+2. Clique na área de upload e selecione o arquivo CSV Gerencial Consolidado
+   - Arquivo esperado: `RELATORIO_GERENCIAL_CONSOLIDADO_*.csv`
+   - Sistema aceita arquivos de até 3GB com otimização automática
+3. Aguarde o carregamento (barra de progresso será exibida)
+4. Clique em "Processar Validação"
+5. Visualize:
+   - Estatísticas de validação
+   - Exportação de resultados (CSV, JSON, XLSX)
+   - Discrepâncias de data identificadas
+
+### 7. Dashboard de Análise
+
+1. Após o pós-processamento, clique na aba "Dashboard"
+2. Use os filtros para refinar a análise:
+   - Projeto/SE
+   - Empresa
+   - LD
+   - Disciplina
+   - Formato
+   - Período (Data Previsto)
+3. Explore as 10 visualizações disponíveis:
+   - Gráficos temporais
+   - Mapas de calor
+   - Visualização 3D
+   - Gráfico de Gantt
+   - E mais...
+4. Interaja com os gráficos (zoom, pan, hover)
+5. Exporte gráficos individuais se necessário
+
+### 8. Dados Salvos
+
+- Os dados são salvos automaticamente após processamento bem-sucedido
+- Use "Carregar Dados Salvos" para restaurar sem reprocessar
+- Visualize informações sobre dados salvos (data do último processamento)
+- Use "Limpar Dados Salvos" para remover dados antigos
 
 ## Formato de Arquivo LD
 
@@ -155,6 +201,32 @@ O nome do arquivo pode seguir padrões como:
 4. Verifique se o cabeçalho tem células mescladas e se foram processadas corretamente
 5. Consulte os detalhes do ProcessarNomeERevisao para verificar extração de LD e revisão
 
+### Dashboard não carrega gráficos
+
+**Possíveis causas:**
+1. Bibliotecas Chart.js ou Plotly.js não carregadas
+2. Dados de pós-processamento não disponíveis
+3. Filtros muito restritivos (nenhum dado para exibir)
+
+**Soluções:**
+1. Verifique o console do navegador para erros de carregamento
+2. Certifique-se de que processou o CSV gerencial antes de acessar o dashboard
+3. Limpe os filtros e tente novamente
+4. Recarregue a página (Ctrl+F5 ou Cmd+Shift+R)
+
+### Erro ao carregar CSV gerencial grande
+
+**Possíveis causas:**
+1. Memória insuficiente no navegador
+2. Arquivo muito grande (> 3GB)
+3. Muitas abas abertas no navegador
+
+**Soluções:**
+1. Feche outras abas e aplicações
+2. Reinicie o navegador
+3. Use um navegador 64-bit com mais memória
+4. O sistema já otimiza automaticamente, mas pode levar alguns minutos para arquivos muito grandes
+
 ### Erro ao exportar
 
 **Possíveis causas:**
@@ -201,11 +273,46 @@ O aplicativo é atualizado periodicamente. Para obter a versão mais recente:
 2. Substitua os arquivos antigos
 3. Recarregue a página no navegador (Ctrl+F5 ou Cmd+Shift+R)
 
+## Fluxo Completo Recomendado
+
+### Passo a Passo Completo
+
+1. **Processar LDs**
+   - Selecione e processe arquivos de LD
+   - Revise problemas identificados
+   - Corrija problemas nas LDs originais se necessário
+
+2. **Pós-Processamento**
+   - Carregue o CSV Gerencial Consolidado
+   - Processe a validação
+   - Revise inconsistências identificadas:
+     - Vales não encontrados no CSV
+     - Vales não emitidos
+     - Discrepâncias de data
+
+3. **Análise no Dashboard**
+   - Acesse a aba "Dashboard"
+   - Use filtros para análise específica
+   - Explore visualizações para insights
+   - Identifique padrões e tendências
+
+4. **Exportação**
+   - Exporte dados processados
+   - Exporte resultados de validação
+   - Use formato apropriado para seu caso
+
+5. **Persistência**
+   - Dados são salvos automaticamente
+   - Use "Carregar Dados Salvos" em sessões futuras
+   - Evite reprocessamento desnecessário
+
 ## Próximos Passos
 
-Após processar as LDs:
+Após processar as LDs e realizar pós-processamento:
 
-1. Revise os dados processados
+1. Revise os dados processados e inconsistências identificadas
 2. Corrija problemas identificados nas LDs originais
-3. Exporte os dados no formato desejado
-4. Integre com os próximos módulos do sistema
+3. Use o Dashboard para análise detalhada
+4. Exporte os dados no formato desejado
+5. Integre com os próximos módulos do sistema
+6. Aproveite a persistência de dados para análises futuras

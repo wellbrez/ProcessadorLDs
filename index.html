@@ -30,6 +30,12 @@
   <!-- PapaParse para processamento de CSV -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   
+  <!-- Chart.js para gráficos 2D interativos -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  
+  <!-- Plotly.js para gráficos 3D e mapas de calor -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  
   <script>
     window.addEventListener('DOMContentLoaded', function() {
       setTimeout(function() {
@@ -166,6 +172,271 @@
           <button class="btn btn-success" id="btnExportar">Exportar</button>
         </div>
       </section>
+      
+      <!-- Pós-Processamento -->
+      <section class="section hidden" id="sectionPosProcessamento">
+        <h2>Pós-Processamento com CSV Gerencial</h2>
+        
+        <!-- Status de Carregamento do CSV -->
+        <div class="csv-loading-status hidden" id="csvLoadingStatus" style="margin-bottom: 20px; padding: 15px; background: var(--color-primary-lightest); border-radius: 8px; border-left: 4px solid var(--color-primary);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="loading-spinner" style="width: 20px; height: 20px; border: 3px solid rgba(0, 126, 122, 0.3); border-top-color: var(--color-primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            <div>
+              <strong style="color: var(--color-primary);">Carregando CSV...</strong>
+              <div id="csvLoadingDetails" style="font-size: 0.9em; color: var(--color-text-light); margin-top: 4px;"></div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="pos-processamento-container">
+          <div class="upload-csv-area" id="uploadCSVArea">
+            <div class="upload-icon">📊</div>
+            <div class="upload-text" id="csvUploadText">Selecione o CSV Gerencial Consolidado</div>
+            <div class="upload-hint">Arquivo: RELATORIO_GERENCIAL_CONSOLIDADO_*.csv</div>
+            <input type="file" id="csvInput" accept=".csv">
+          </div>
+          <div class="buttons-group" style="margin-top: 20px;">
+            <button class="btn btn-primary" id="btnPosProcessar" disabled>Processar Validação</button>
+          </div>
+          
+          <!-- Dados Salvos -->
+          <div class="dados-salvos-container" id="dadosSalvosContainer" style="margin-top: 20px; display: none;">
+            <div class="card" style="padding: 15px; background: var(--color-primary-lightest); border-left: 4px solid var(--color-primary); border-radius: 8px;">
+              <h4 style="margin-bottom: 10px; color: var(--color-primary);">💾 Dados Salvos</h4>
+              <div id="dadosSalvosInfo" style="margin-bottom: 10px; font-size: 0.9em; color: var(--color-text-light);"></div>
+              <div class="buttons-group" style="margin-top: 10px;">
+                <button class="btn btn-secondary" id="btnCarregarDadosSalvos">Carregar Dados Salvos</button>
+                <button class="btn btn-primary" id="btnSalvarDadosAtuais">Salvar Dados Atuais</button>
+                <button class="btn btn-danger" id="btnLimparDadosSalvos">Limpar Dados Salvos</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Resultados do Pós-Processamento -->
+        <div class="pos-processamento-resultados hidden" id="posProcessamentoResultados">
+          <!-- Estatísticas -->
+          <div class="stats-grid" id="posStatsGrid"></div>
+          
+          <!-- Exportação de Resultados -->
+          <div class="export-section" style="margin-top: 20px;">
+            <h3>Exportar Resultados do Pós-Processamento</h3>
+            <div class="export-options">
+              <select id="exportPosProcessamentoFormat">
+                <option value="json">JSON (Recomendado)</option>
+                <option value="xlsx">Excel (XLSX)</option>
+                <option value="csv">CSV</option>
+              </select>
+              <button class="btn btn-success" id="btnExportarPosProcessamento">Exportar</button>
+            </div>
+          </div>
+          
+          <!-- Discrepâncias de Data -->
+          <div class="discrepancias-container hidden" id="discrepanciasContainer" style="margin-top: 30px;">
+            <h3 style="color: var(--color-error); margin-bottom: 15px;">⚠️ Discrepâncias de Data</h3>
+            <div class="table-container">
+              <table id="tableDiscrepancias">
+                <thead>
+                  <tr>
+                    <th>NO VALE</th>
+                    <th>Arquivo</th>
+                    <th>Data GR Rec (CSV)</th>
+                    <th>REALIZADO 2 (LD)</th>
+                    <th>Diferença (dias)</th>
+                    <th>Ação Sugerida</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- Dashboard -->
+      <section class="section hidden" id="sectionDashboard">
+        <div class="dashboard-header">
+          <h2>Dashboard de Análise</h2>
+          <div class="dashboard-tabs">
+            <button class="tab-button active" data-tab="resultados">Resultados</button>
+            <button class="tab-button" data-tab="dashboard">Dashboard</button>
+          </div>
+        </div>
+        
+        <!-- Conteúdo da aba Resultados -->
+        <div class="tab-content active" id="tabResultados">
+          <div class="pos-processamento-resultados-tab" id="posProcessamentoResultadosTab">
+            <!-- Conteúdo será movido aqui dinamicamente -->
+          </div>
+        </div>
+        
+        <!-- Conteúdo da aba Dashboard -->
+        <div class="tab-content hidden" id="tabDashboard">
+          <!-- Painel de Filtros -->
+          <div class="dashboard-filters">
+            <h3>Filtros</h3>
+            <div class="filters-grid">
+              <div class="filter-group">
+                <label>Projeto/SE</label>
+                <select id="filterProjeto" multiple>
+                  <option value="">Todos</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label>Empresa</label>
+                <select id="filterEmpresa" multiple>
+                  <option value="">Todos</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label>LD</label>
+                <select id="filterLD" multiple>
+                  <option value="">Todos</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label>Disciplina</label>
+                <select id="filterDisciplina" multiple>
+                  <option value="">Todos</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label>Formato</label>
+                <select id="filterFormato" multiple>
+                  <option value="">Todos</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label>Período (Data Previsto)</label>
+                <div style="display: flex; gap: 10px;">
+                  <input type="date" id="filterDataInicio" style="flex: 1;">
+                  <input type="date" id="filterDataFim" style="flex: 1;">
+                </div>
+              </div>
+            </div>
+            <div class="filters-actions">
+              <button class="btn btn-primary" id="btnAplicarFiltros">Aplicar Filtros</button>
+              <button class="btn btn-secondary" id="btnLimparFiltros">Limpar Filtros</button>
+            </div>
+          </div>
+          
+          <!-- Grid de Visualizações -->
+          <div class="dashboard-visualizations">
+            <!-- Estatísticas Resumidas -->
+            <div class="dashboard-stats" id="dashboardStats"></div>
+            
+            <!-- Gráfico 1: Temporal Previsto vs Realizado -->
+            <div class="chart-card full-width">
+              <div class="chart-header">
+                <h3>Previsto vs Realizado (Temporal)</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <canvas id="chartTemporal"></canvas>
+              </div>
+            </div>
+            
+            <!-- Gráfico 2: Mapa de Calor Temporal -->
+            <div class="chart-card two-thirds">
+              <div class="chart-header">
+                <h3>Mapa de Calor Temporal por Disciplina</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <div id="chartMapaCalorTemporal"></div>
+              </div>
+            </div>
+            
+            <!-- Gráfico 3: Distribuição por Disciplina -->
+            <div class="chart-card one-third">
+              <div class="chart-header">
+                <h3>Distribuição por Disciplina</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <canvas id="chartDistribuicao"></canvas>
+              </div>
+            </div>
+            
+            <!-- Gráfico 4: 3D Disciplina × Projeto × Status -->
+            <div class="chart-card full-width">
+              <div class="chart-header">
+                <h3>Visualização 3D: Disciplina × Projeto × Quantidade</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <div id="chart3D"></div>
+              </div>
+            </div>
+            
+            <!-- Gráfico 5: Mapa de Calor Discrepâncias -->
+            <div class="chart-card half-width">
+              <div class="chart-header">
+                <h3>Mapa de Calor: Discrepâncias de Data</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <div id="chartMapaCalorDiscrepancias"></div>
+              </div>
+            </div>
+            
+            <!-- Gráfico 6: Mapa de Calor Taxa de Emissão -->
+            <div class="chart-card half-width">
+              <div class="chart-header">
+                <h3>Mapa de Calor: Taxa de Emissão</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <div id="chartMapaCalorEmissao"></div>
+              </div>
+            </div>
+            
+            <!-- Gráfico 7: Barras Empilhadas Status por Projeto -->
+            <div class="chart-card two-thirds">
+              <div class="chart-header">
+                <h3>Status por Projeto</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <canvas id="chartBarrasEmpilhadas"></canvas>
+              </div>
+            </div>
+            
+            <!-- Gráfico 8: Dispersão Atraso vs Volume -->
+            <div class="chart-card one-third">
+              <div class="chart-header">
+                <h3>Atraso vs Volume</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <canvas id="chartDispersao"></canvas>
+              </div>
+            </div>
+            
+            <!-- Gráfico 9: Gantt Timeline -->
+            <div class="chart-card full-width">
+              <div class="chart-header">
+                <h3>Timeline de Documentos (Gantt)</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container" style="height: 600px; overflow-x: auto;">
+                <canvas id="chartGantt"></canvas>
+              </div>
+            </div>
+            
+            <!-- Gráfico 10: Área Acúmulo Temporal -->
+            <div class="chart-card full-width">
+              <div class="chart-header">
+                <h3>Acúmulo de Documentos (Temporal)</h3>
+                <button class="btn-icon" title="Exportar gráfico">📥</button>
+              </div>
+              <div class="chart-container">
+                <canvas id="chartAreaAcumulo"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
   
@@ -173,6 +444,8 @@
   <script src="js/processor.js"></script>
   <script src="js/validator.js"></script>
   <script src="js/exporter.js"></script>
+  <script src="js/postprocessor.js"></script>
+  <script src="js/dashboard.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

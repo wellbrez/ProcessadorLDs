@@ -1,7 +1,7 @@
 # PROJETO.md - ProcessadorLDs
 
 **Autor:** Wellington Bravin  
-**Data:** 21/01/2026
+**Data:** 26/01/2026
 
 ## Visão Geral
 
@@ -42,6 +42,25 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
    - Estatísticas de processamento
    - Exportação de resultados
 
+5. **Pós-Processamento com CSV Gerencial**
+   - Validação de vales contra extrato oficial
+   - Verificação de emissão (PrimEmissao)
+   - Comparação de datas (Data GR Rec vs REALIZADO 2)
+   - Identificação de discrepâncias
+   - Exportação de resultados de validação
+
+6. **Dashboard Profissional**
+   - 10 visualizações avançadas
+   - Filtros avançados para análise
+   - Gráficos temporais, 3D e mapas de calor
+   - Análise por disciplina, projeto, empresa
+   - Exportação de visualizações
+
+7. **Persistência de Dados**
+   - Salvamento automático no navegador
+   - Carregamento de dados salvos
+   - Gerenciamento de dados persistidos
+
 ## Requisitos
 
 ### Funcionais
@@ -54,6 +73,10 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
 - RF06: Extrair disciplina do número do vale
 - RF07: Gerar relatório de status
 - RF08: Exportar resultados em CSV, XLSX ou JSON
+- RF09: Validar dados contra CSV gerencial do sistema oficial
+- RF10: Exibir inconsistências no modal de detalhes de cada LD
+- RF11: Dashboard com visualizações avançadas
+- RF12: Persistir dados no navegador para evitar reprocessamento
 
 ### Não Funcionais
 
@@ -62,6 +85,9 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
 - RNF03: Interface responsiva e intuitiva
 - RNF04: Suporte a navegadores modernos (Chrome, Firefox, Edge, Safari)
 - RNF05: Processamento de arquivos de até 10MB
+- RNF06: Processamento de CSV gerencial de até 3GB com otimização de memória
+- RNF07: Interface responsiva para dashboard com múltiplas visualizações
+- RNF08: Performance otimizada para grandes volumes de dados
 
 ## Fluxo de Processamento
 
@@ -188,6 +214,19 @@ Arquivo XLSX com:
 - Aba "Dados": Dados processados
 - Aba "Status": Status de cada LD
 - Aba "Problemas": Lista de problemas encontrados
+- Aba "Pós-Processamento": Resultados de validação (se disponível)
+- Aba "Discrepâncias Data": Lista de discrepâncias de data (se disponível)
+
+### Formato de Exportação do Pós-Processamento
+
+**CSV/JSON/XLSX** com:
+- Estatísticas de processamento
+- Resultados detalhados por vale:
+  - NO VALE, Arquivo, LD, Revisão
+  - Encontrado no CSV, Emitido
+  - Data GR Rec, REALIZADO 2, Status Data, Diferença (dias)
+  - Projeto/SE, Empresa, Título, Fin. Dev, etc.
+- Discrepâncias de data (aba separada no Excel)
 
 ## Problemas Identificados
 
@@ -227,9 +266,61 @@ Arquivo XLSX com:
    - Nenhuma linha válida após filtros
    - Mensagem: "Nenhuma linha foi contabilizada, verifique se está no formato adequado e se o 'previsto' está preenchido corretamente, com datas válidas (dd/MM/yyyy ou dd/MM/yy)"
 
+## Fluxo de Pós-Processamento
+
+1. **Processamento Inicial**: Processar LDs conforme fluxo principal
+2. **Carregamento CSV Gerencial**: Selecionar arquivo CSV do sistema oficial
+3. **Filtragem Inteligente**: Sistema filtra apenas vales relevantes das LDs processadas
+4. **Validação**: Verificar cada vale contra o CSV gerencial
+5. **Análise**: Identificar vales não encontrados, não emitidos e discrepâncias de data
+6. **Visualização**: Exibir resultados em dashboard com múltiplas visualizações
+7. **Exportação**: Exportar resultados de validação em múltiplos formatos
+
+## Dashboard de Análise
+
+### Visualizações Disponíveis
+
+1. **Gráfico Temporal**: Previsto vs Realizado ao longo do tempo
+2. **Mapa de Calor Temporal**: Intensidade por disciplina e período
+3. **Visualização 3D**: Disciplina × Projeto × Quantidade com cores por status
+4. **Mapa de Calor de Discrepâncias**: Atrasos médios por projeto/disciplina
+5. **Gráfico de Gantt**: Timeline de documentos com previsto e realizado
+6. **Distribuição por Disciplina**: Gráfico de pizza/roseta
+7. **Barras Empilhadas**: Status (Emitido/Não Emitido/Não Encontrado) por projeto
+8. **Gráfico de Dispersão**: Atraso vs Volume de documentos
+9. **Mapa de Calor de Emissão**: Taxa de emissão por projeto/disciplina
+10. **Gráfico de Área**: Acúmulo temporal de documentos
+
+### Filtros Disponíveis
+
+- Projeto/SE (multiselect)
+- Empresa (multiselect)
+- LD (multiselect)
+- Disciplina (multiselect)
+- Formato (multiselect)
+- Período (Data Previsto - início e fim)
+
+## Persistência de Dados
+
+### Funcionalidades
+
+- **Salvamento Automático**: Dados são salvos automaticamente após processamento bem-sucedido
+- **Carregamento**: Restaurar dados salvos sem necessidade de reprocessar
+- **Gerenciamento**: Visualizar informações sobre dados salvos e limpar quando necessário
+- **Limite**: Sistema valida tamanho (recomendado até 5MB) e alerta se necessário
+
+### Dados Salvos
+
+- Resultado do pós-processamento
+- Dados das LDs processadas
+- Resultado da validação
+- Data e hora do processamento
+- Hash do CSV para validação
+
 ## Próximos Passos
 
 - Integração com módulos posteriores
 - Melhorias na interface
 - Suporte a mais formatos
 - Processamento em lote otimizado
+- Novas visualizações no dashboard

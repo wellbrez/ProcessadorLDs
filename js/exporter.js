@@ -109,6 +109,63 @@ function exportarXLSX(dados, nomeArquivo = 'dados_processados', linhasComErro = 
     XLSX.utils.book_append_sheet(workbook, worksheetErros, 'Linhas com Erro');
   }
   
+  // Aba de pós-processamento (se disponível)
+  if (dados.posProcessamento && dados.posProcessamento.resultados && dados.posProcessamento.resultados.length > 0) {
+    // Preparar dados de pós-processamento para exportação
+    const dadosPosProcessamento = dados.posProcessamento.resultados.map(r => {
+      const linha = {
+        'NO VALE': r.noVale,
+        'Arquivo': r.arquivo,
+        'LD': r.ld,
+        'Revisão': r.revisao,
+        'Encontrado no CSV': r.encontradoNoCSV ? 'Sim' : 'Não',
+        'Emitido': r.emitido ? 'Sim' : 'Não',
+        'Data GR Rec': r.dadosCSV.dataGRRec ? (r.dadosCSV.dataGRRec instanceof Date ? formatarData(r.dadosCSV.dataGRRec) : String(r.dadosCSV.dataGRRec)) : '',
+        'REALIZADO 2': r.comparacaoData.dataLD ? formatarData(r.comparacaoData.dataLD) : (r.realizado2Original || ''),
+        'Status Data': r.comparacaoData.iguais === true ? 'OK' : (r.comparacaoData.iguais === false ? `Diferença: ${r.comparacaoData.diferenca} dias` : 'N/A'),
+        'Diferença (dias)': r.comparacaoData.diferenca !== null ? r.comparacaoData.diferenca : '',
+        'Projeto/SE': r.dadosCSV.projetoSE || '',
+        'Empresa': r.dadosCSV.empresa || '',
+        'Título': r.dadosCSV.title || '',
+        'Fin. Dev': r.dadosCSV.finDev || '',
+        'GR Recebimento': r.dadosCSV.grRecebimento || '',
+        'Status': r.dadosCSV.status || '',
+        'Fase': r.dadosCSV.fase || '',
+        'Formato': r.dadosCSV.formato || '',
+        'Responsável': r.dadosCSV.responsavel || ''
+      };
+      return linha;
+    });
+    
+    const worksheetPosProcessamento = XLSX.utils.json_to_sheet(dadosPosProcessamento);
+    XLSX.utils.book_append_sheet(workbook, worksheetPosProcessamento, 'Pós-Processamento');
+  }
+  
+  // Aba de discrepâncias de data (se disponível)
+  if (dados.posProcessamento && dados.posProcessamento.resultados) {
+    const discrepancias = dados.posProcessamento.resultados.filter(r => 
+      r.comparacaoData.iguais === false && r.comparacaoData.diferenca !== null
+    );
+    
+    if (discrepancias.length > 0) {
+      const dadosDiscrepancias = discrepancias.map(r => {
+        return {
+          'NO VALE': r.noVale,
+          'Arquivo': r.arquivo,
+          'Data GR Rec (CSV)': r.comparacaoData.dataCSV ? formatarData(r.comparacaoData.dataCSV) : (r.dadosCSV.dataGRRec ? String(r.dadosCSV.dataGRRec) : ''),
+          'REALIZADO 2 (LD)': r.comparacaoData.dataLD ? formatarData(r.comparacaoData.dataLD) : (r.realizado2Original || ''),
+          'Diferença (dias)': r.comparacaoData.diferenca,
+          'Ação Sugerida': r.comparacaoData.diferenca > 0 
+            ? `Ajustar LD: Data GR Rec está ${Math.abs(r.comparacaoData.diferenca)} dias antes`
+            : `Ajustar LD: Data GR Rec está ${Math.abs(r.comparacaoData.diferenca)} dias depois`
+        };
+      });
+      
+      const worksheetDiscrepancias = XLSX.utils.json_to_sheet(dadosDiscrepancias);
+      XLSX.utils.book_append_sheet(workbook, worksheetDiscrepancias, 'Discrepâncias Data');
+    }
+  }
+  
   // Se não houver abas, criar uma com os dados fornecidos
   if (workbook.SheetNames.length === 0) {
     if (Array.isArray(dados)) {
@@ -176,6 +233,102 @@ function formatarData(data) {
 
 /**
  * @swagger
+ * Exporta dados do pós-processamento
+ * @param {Object} resultadoPosProcessamento - Resultado do pós-processamento
+ * @param {string} formato - Formato de exportação ('csv', 'xlsx', 'json')
+ * @param {string} nomeArquivo - Nome do arquivo de saída (sem extensão)
+ */
+function exportarPosProcessamentoDados(resultadoPosProcessamento, formato, nomeArquivo = 'pos_processamento') {
+  if (!resultadoPosProcessamento || !resultadoPosProcessamento.resultados) {
+    alert('Nenhum dado de pós-processamento para exportar');
+    return;
+  }
+  
+  // Preparar dados para exportação
+  const dadosExportacao = {
+    processamento: {
+      data: new Date().toISOString(),
+      totalLinhasProcessadas: resultadoPosProcessamento.totalLinhasProcessadas || 0,
+      valesEncontrados: resultadoPosProcessamento.valesEncontrados || 0,
+      valesNaoEncontrados: resultadoPosProcessamento.valesNaoEncontrados || 0,
+      valesEmitidos: resultadoPosProcessamento.valesEmitidos || 0,
+      valesNaoEmitidos: resultadoPosProcessamento.valesNaoEmitidos || 0,
+      discrepânciasData: resultadoPosProcessamento.discrepânciasData || 0
+    },
+    resultados: resultadoPosProcessamento.resultados.map(r => {
+      return {
+        'NO VALE': r.noVale,
+        'Arquivo': r.arquivo,
+        'LD': r.ld,
+        'Revisão': r.revisao,
+        'Encontrado no CSV': r.encontradoNoCSV ? 'Sim' : 'Não',
+        'Emitido': r.emitido ? 'Sim' : 'Não',
+        'Data GR Rec': r.dadosCSV.dataGRRec ? (r.dadosCSV.dataGRRec instanceof Date ? formatarData(r.dadosCSV.dataGRRec) : String(r.dadosCSV.dataGRRec)) : '',
+        'REALIZADO 2': r.comparacaoData.dataLD ? formatarData(r.comparacaoData.dataLD) : (r.realizado2Original || ''),
+        'Status Data': r.comparacaoData.iguais === true ? 'OK' : (r.comparacaoData.iguais === false ? `Diferença: ${r.comparacaoData.diferenca} dias` : 'N/A'),
+        'Diferença (dias)': r.comparacaoData.diferenca !== null ? r.comparacaoData.diferenca : '',
+        'Projeto/SE': r.dadosCSV.projetoSE || '',
+        'Empresa': r.dadosCSV.empresa || '',
+        'Título': r.dadosCSV.title || '',
+        'Fin. Dev': r.dadosCSV.finDev || '',
+        'GR Recebimento': r.dadosCSV.grRecebimento || '',
+        'Status': r.dadosCSV.status || '',
+        'Fase': r.dadosCSV.fase || '',
+        'Formato': r.dadosCSV.formato || '',
+        'Responsável': r.dadosCSV.responsavel || ''
+      };
+    }),
+    discrepancias: resultadoPosProcessamento.resultados
+      .filter(r => r.comparacaoData.iguais === false && r.comparacaoData.diferenca !== null)
+      .map(r => {
+        return {
+          'NO VALE': r.noVale,
+          'Arquivo': r.arquivo,
+          'Data GR Rec (CSV)': r.comparacaoData.dataCSV ? formatarData(r.comparacaoData.dataCSV) : (r.dadosCSV.dataGRRec ? String(r.dadosCSV.dataGRRec) : ''),
+          'REALIZADO 2 (LD)': r.comparacaoData.dataLD ? formatarData(r.comparacaoData.dataLD) : (r.realizado2Original || ''),
+          'Diferença (dias)': r.comparacaoData.diferenca,
+          'Ação Sugerida': r.comparacaoData.diferenca > 0 
+            ? `Ajustar LD: Data GR Rec está ${Math.abs(r.comparacaoData.diferenca)} dias antes`
+            : `Ajustar LD: Data GR Rec está ${Math.abs(r.comparacaoData.diferenca)} dias depois`
+        };
+      })
+  };
+  
+  switch (formato.toLowerCase()) {
+    case 'csv':
+      exportarCSV(dadosExportacao.resultados, nomeArquivo);
+      break;
+    case 'xlsx':
+      const workbook = XLSX.utils.book_new();
+      
+      // Aba de resultados
+      if (dadosExportacao.resultados.length > 0) {
+        const worksheetResultados = XLSX.utils.json_to_sheet(dadosExportacao.resultados);
+        XLSX.utils.book_append_sheet(workbook, worksheetResultados, 'Resultados');
+      }
+      
+      // Aba de discrepâncias
+      if (dadosExportacao.discrepancias.length > 0) {
+        const worksheetDiscrepancias = XLSX.utils.json_to_sheet(dadosExportacao.discrepancias);
+        XLSX.utils.book_append_sheet(workbook, worksheetDiscrepancias, 'Discrepâncias');
+      }
+      
+      // Aba de estatísticas
+      const worksheetEstatisticas = XLSX.utils.json_to_sheet([dadosExportacao.processamento]);
+      XLSX.utils.book_append_sheet(workbook, worksheetEstatisticas, 'Estatísticas');
+      
+      XLSX.writeFile(workbook, `${nomeArquivo}.xlsx`);
+      break;
+    case 'json':
+      exportarJSON(dadosExportacao, nomeArquivo);
+      break;
+    default:
+      alert(`Formato "${formato}" não suportado`);
+  }
+}
+
+/**
+ * @swagger
  * Exporta dados consolidados de múltiplos arquivos
  * @param {Object} resultadoValidacao - Resultado da validação de múltiplos arquivos
  * @param {Array} todosDados - Todos os dados processados de todos os arquivos
@@ -199,9 +352,43 @@ function exportarDadosConsolidados(resultadoValidacao, todosDados, formato, nome
     problemas: resultadoValidacao.problemas
   };
   
+  // Incluir dados de pós-processamento se disponível (acessar variável global do app.js)
+  if (typeof window !== 'undefined' && window.resultadoPosProcessamento) {
+    dadosExportacao.posProcessamento = window.resultadoPosProcessamento;
+  }
+  
   switch (formato.toLowerCase()) {
     case 'csv':
-      exportarCSV(todosDados, nomeArquivo);
+      // Para CSV, incluir dados de pós-processamento nas colunas se disponível
+      if (typeof window !== 'undefined' && window.resultadoPosProcessamento && window.resultadoPosProcessamento.resultados && window.resultadoPosProcessamento.resultados.length > 0) {
+        const resultadoPosProcessamento = window.resultadoPosProcessamento;
+        // Criar mapa de validação por NO VALE
+        const validacaoPorVale = new Map();
+        resultadoPosProcessamento.resultados.forEach(r => {
+          validacaoPorVale.set(r.noVale, r);
+        });
+        
+        // Adicionar colunas de validação aos dados
+        const dadosComValidacao = todosDados.map(linha => {
+          const validacao = validacaoPorVale.get(linha['NO VALE']);
+          if (validacao) {
+            return {
+              ...linha,
+              'Encontrado no CSV': validacao.encontradoNoCSV ? 'Sim' : 'Não',
+              'Emitido': validacao.emitido ? 'Sim' : 'Não',
+              'Data GR Rec': validacao.dadosCSV.dataGRRec ? (validacao.dadosCSV.dataGRRec instanceof Date ? formatarData(validacao.dadosCSV.dataGRRec) : String(validacao.dadosCSV.dataGRRec)) : '',
+              'Status Data': validacao.comparacaoData.iguais === true ? 'OK' : (validacao.comparacaoData.iguais === false ? `Diferença: ${validacao.comparacaoData.diferenca} dias` : 'N/A'),
+              'Projeto/SE': validacao.dadosCSV.projetoSE || '',
+              'Empresa': validacao.dadosCSV.empresa || '',
+              'Título': validacao.dadosCSV.title || ''
+            };
+          }
+          return linha;
+        });
+        exportarCSV(dadosComValidacao, nomeArquivo);
+      } else {
+        exportarCSV(todosDados, nomeArquivo);
+      }
       break;
     case 'xlsx':
       exportarXLSX(dadosExportacao, nomeArquivo, linhasComErro);

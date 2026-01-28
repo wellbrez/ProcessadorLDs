@@ -1,7 +1,7 @@
 # ARQUITETURA.md - ProcessadorLDs
 
 **Autor:** Wellington Bravin  
-**Data:** 21/01/2026
+**Data:** 26/01/2026
 
 ## Arquitetura do Sistema
 
@@ -29,9 +29,23 @@ O ProcessadorLDs é uma aplicação web standalone que roda completamente no cli
 │  │  (Exportação de Resultados)      │  │
 │  └───────────────────────────────────┘  │
 │  ┌───────────────────────────────────┐  │
+│  │      postprocessor.js             │  │
+│  │  (Pós-Processamento CSV)          │  │
+│  └───────────────────────────────────┘  │
+│  ┌───────────────────────────────────┐  │
+│  │        dashboard.js               │  │
+│  │  (Visualizações e Gráficos)       │  │
+│  └───────────────────────────────────┘  │
+│  ┌───────────────────────────────────┐  │
+│  │         app.js                    │  │
+│  │  (Orquestração da Aplicação)      │  │
+│  └───────────────────────────────────┘  │
+│  ┌───────────────────────────────────┐  │
 │  │    Bibliotecas Externas (CDN)     │  │
 │  │  - SheetJS (xlsx.js)              │  │
 │  │  - PapaParse (CSV)                │  │
+│  │  - Chart.js 4.4.0                 │  │
+│  │  - Plotly.js 2.27.0                │  │
 │  └───────────────────────────────────┘  │
 └─────────────────────────────────────────┘
 ```
@@ -172,6 +186,7 @@ function identificarProblemas(dadosProcessados)
 - Exportação para XLSX
 - Exportação para JSON
 - Geração de relatórios
+- Exportação específica de dados de pós-processamento
 
 **Funções Principais:**
 
@@ -199,9 +214,188 @@ function exportarXLSX(dados, nomeArquivo)
  * @param {string} nomeArquivo - Nome do arquivo de saída
  */
 function exportarJSON(dados, nomeArquivo)
+
+/**
+ * @swagger
+ * Exporta dados do pós-processamento
+ * @param {Object} resultadoPosProcessamento - Resultado do pós-processamento
+ * @param {string} formato - Formato de exportação ('csv', 'xlsx', 'json')
+ * @param {string} nomeArquivo - Nome do arquivo de saída
+ */
+function exportarPosProcessamentoDados(resultadoPosProcessamento, formato, nomeArquivo)
+```
+
+### 5. Pós-Processador (postprocessor.js)
+
+**Responsabilidades:**
+- Carregamento e processamento de CSV gerencial (otimizado para arquivos grandes)
+- Validação de vales contra extrato oficial
+- Verificação de emissão (PrimEmissao)
+- Comparação de datas (Data GR Rec vs REALIZADO 2)
+- Coleta de vales das LDs para filtragem prévia
+
+**Funções Principais:**
+
+```javascript
+/**
+ * @swagger
+ * Normaliza número do vale para comparação
+ * @param {string} noVale - Número do vale
+ * @returns {string} Número do vale normalizado
+ */
+function normalizarNumeroVale(noVale)
+
+/**
+ * @swagger
+ * Coleta todos os números de vale das LDs processadas
+ * @param {Array} dadosLDs - Array de dados processados das LDs
+ * @returns {Set<string>} Set com todos os números de vale normalizados
+ */
+function coletarValesDasLDs(dadosLDs)
+
+/**
+ * @swagger
+ * Carrega CSV gerencial de forma otimizada (até 3GB)
+ * @param {File} arquivo - Arquivo CSV gerencial
+ * @param {Set<string>} valesParaBuscar - Set de vales para filtrar
+ * @param {Function} callbackProgresso - Callback para atualizar progresso
+ * @returns {Promise<Object>} Índice do CSV por número do vale
+ */
+function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
+
+/**
+ * @swagger
+ * Processa pós-processamento de todas as LDs validadas contra o CSV
+ * @param {Array} dadosLDs - Array de dados processados das LDs
+ * @param {Map} indiceCSV - Índice do CSV por número do vale
+ * @param {Function} callbackProgresso - Função callback para atualizar progresso
+ * @returns {Object} Objeto consolidado com resultados do pós-processamento
+ */
+function processarPosProcessamento(dadosLDs, indiceCSV, callbackProgresso)
+```
+
+**Otimizações para Arquivos Grandes:**
+- Filtragem prévia: Processa apenas vales relevantes das LDs
+- Chunks grandes: 100.000 linhas por chunk para arquivos > 1GB
+- Pausas mínimas: 1ms entre chunks para não bloquear UI
+- Armazenamento mínimo: Apenas 12 campos necessários por linha
+- Uma linha por vale: Prioriza PrimEmissao quando disponível
+
+### 6. Dashboard (dashboard.js)
+
+**Responsabilidades:**
+- Criação e gerenciamento de visualizações avançadas
+- Preparação de dados mesclados (LDs + CSV)
+- Aplicação de filtros
+- Renderização de gráficos Chart.js e Plotly.js
+- Gerenciamento de memória (destruição de gráficos)
+
+**Funções Principais:**
+
+```javascript
+/**
+ * @swagger
+ * Prepara dados mesclados das LDs e do CSV
+ * @param {Array} resultadosProcessamento - Dados processados das LDs
+ * @param {Object} resultadoPosProcessamento - Resultado do pós-processamento
+ * @returns {Array} Array de dados mesclados
+ */
+function prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamento)
+
+/**
+ * @swagger
+ * Aplica filtros aos dados mesclados
+ * @param {Array} dadosMesclados - Dados mesclados
+ * @param {Object} filtros - Objeto com filtros
+ * @returns {Array} Dados filtrados
+ */
+function aplicarFiltros(dadosMesclados, filtros)
+
+/**
+ * @swagger
+ * Atualiza todos os gráficos do dashboard
+ * @param {Array} dadosFiltrados - Dados filtrados para visualização
+ */
+function atualizarTodosGraficos(dadosFiltrados)
+
+/**
+ * @swagger
+ * Destrói todos os gráficos para liberar memória
+ */
+function destruirGraficos()
+```
+
+**Visualizações Implementadas:**
+- `criarGraficoTemporal()` - Line Chart (Chart.js)
+- `criarMapaCalorTemporal()` - Heatmap 2D (Plotly.js)
+- `criarGrafico3D()` - 3D Scatter (Plotly.js)
+- `criarMapaCalorDiscrepancias()` - Heatmap 2D (Plotly.js)
+- `criarGraficoGantt()` - Bar Chart horizontal (Chart.js)
+- `criarGraficoDistribuicao()` - Doughnut Chart (Chart.js)
+- `criarGraficoBarrasEmpilhadas()` - Stacked Bar Chart (Chart.js)
+- `criarGraficoDispersao()` - Scatter Chart (Chart.js)
+- `criarMapaCalorEmissao()` - Heatmap 2D (Plotly.js)
+- `criarGraficoAreaAcumulo()` - Area Chart (Chart.js)
+
+### 7. Aplicação Principal (app.js)
+
+**Responsabilidades:**
+- Orquestração de todos os módulos
+- Gerenciamento de estado da aplicação
+- Event listeners e interações do usuário
+- Integração de inconsistências no modal de detalhes
+- Gerenciamento de tabs do dashboard
+- Persistência de dados no navegador
+
+**Funções Principais:**
+
+```javascript
+/**
+ * @swagger
+ * Processa múltiplos arquivos de LD
+ */
+async function processarArquivos()
+
+/**
+ * @swagger
+ * Executa pós-processamento com CSV gerencial
+ */
+async function executarPosProcessamento()
+
+/**
+ * @swagger
+ * Exibe resultados do pós-processamento
+ */
+function exibirResultadosPosProcessamento()
+
+/**
+ * @swagger
+ * Alterna entre abas do dashboard
+ */
+function alternarAbaDashboard(tabName)
+
+/**
+ * @swagger
+ * Inicializa o dashboard
+ */
+function inicializarDashboard()
+
+/**
+ * @swagger
+ * Salva dados do pós-processamento no navegador
+ */
+function salvarDadosPosProcessamento()
+
+/**
+ * @swagger
+ * Carrega dados salvos do pós-processamento
+ */
+function carregarDadosPosProcessamento()
 ```
 
 ## Fluxo de Dados
+
+### Fluxo Principal (Processamento de LDs)
 
 ```
 1. Usuário seleciona arquivo(s)
@@ -227,6 +421,36 @@ function exportarJSON(dados, nomeArquivo)
 11. Usuário pode exportar resultados
    ↓
 12. exporter.js gera arquivo de saída
+```
+
+### Fluxo de Pós-Processamento
+
+```
+1. Após processamento de LDs, usuário seleciona CSV gerencial
+   ↓
+2. postprocessor.js coleta vales das LDs processadas
+   ↓
+3. postprocessor.js carrega CSV gerencial em chunks (otimizado)
+   - Filtra apenas vales relevantes durante carregamento
+   - Processa em chunks de 100.000 linhas (arquivos grandes)
+   - Armazena apenas campos necessários
+   ↓
+4. postprocessor.js processa validação:
+   - Verifica se vale existe no CSV
+   - Verifica se foi emitido (PrimEmissao)
+   - Compara Data GR Rec com REALIZADO 2
+   ↓
+5. Resultados exibidos na interface
+   ↓
+6. Dados salvos automaticamente no localStorage
+   ↓
+7. Usuário pode acessar Dashboard para visualizações
+   ↓
+8. dashboard.js prepara dados mesclados (LDs + CSV)
+   ↓
+9. dashboard.js aplica filtros e cria visualizações
+   ↓
+10. Usuário pode exportar resultados de validação
 ```
 
 ## ProcessarNomeERevisao
@@ -282,12 +506,19 @@ A função `ProcessarNomeERevisao` é uma etapa crítica do processamento que ex
 ### Exibição na Interface
 
 As informações detalhadas do `ProcessarNomeERevisao` estão disponíveis na tabela de status:
-- Cada arquivo possui um botão "Ver Detalhes ProcessarNomeERevisao"
-- Ao clicar, exibe:
-  - LD Final e Revisão Final
-  - Lista completa de fontes LD encontradas
-  - Lista completa de fontes de Revisão encontradas
-  - Contadores de quantas fontes foram encontradas
+- Cada arquivo possui um botão "Ver Detalhes"
+- Ao clicar, exibe modal com:
+  - **Identificação da LD**: LD Final e Revisão Final, fontes encontradas
+  - **Estatísticas de Processamento**: Colunas processadas, linhas válidas/inválidas
+  - **Inconsistências do Pós-Processamento** (se disponível):
+    - Vales não encontrados no CSV (com lista de vales)
+    - Vales não emitidos (encontrados mas sem PrimEmissao)
+    - Discrepâncias de data (Data GR Rec vs REALIZADO 2) com diferença em dias
+  - **Linhas com Erro**: Tabela detalhada com erros por linha
+- **Status Visual**: Badges coloridos no status da LD indicando inconsistências:
+  - ❌ Vermelho: Vales não encontrados no CSV
+  - ⚠️ Amarelo: Discrepâncias de data
+  - ✅ Verde: Todos os vales validados com sucesso
 
 ## Estrutura de Dados
 
@@ -350,8 +581,24 @@ As informações detalhadas do `ProcessarNomeERevisao` estão disponíveis na ta
 - **Uso**: Leitura e escrita de arquivos CSV
 - **CDN**: https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js
 - **Funções utilizadas**:
-  - `Papa.parse()` - Parsear CSV
+  - `Papa.parse()` - Parsear CSV (com chunk para arquivos grandes)
   - `Papa.unparse()` - Converter dados para CSV
+
+### Chart.js
+- **Uso**: Gráficos 2D interativos
+- **CDN**: https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js
+- **Tipos utilizados**:
+  - Line Chart (temporal, área)
+  - Bar Chart (horizontal para Gantt, empilhado)
+  - Doughnut Chart (distribuição)
+  - Scatter Chart (dispersão)
+
+### Plotly.js
+- **Uso**: Gráficos 3D e mapas de calor
+- **CDN**: https://cdn.plot.ly/plotly-2.27.0.min.js
+- **Tipos utilizados**:
+  - Heatmap 2D (mapas de calor)
+  - Scatter3D (visualização 3D)
 
 ## Transformação de Cabeçalho com Células Mescladas
 
@@ -381,11 +628,57 @@ Esta lógica se aplica a:
 
 ## Considerações de Performance
 
+### Processamento de LDs
 - Processamento assíncrono para não bloquear UI
 - Processamento em chunks para arquivos grandes
 - Feedback visual durante processamento
 - Limite de tamanho de arquivo: 10MB
 - ProcessarNomeERevisao busca em até 200 linhas por fonte para otimizar performance
+
+### Processamento de CSV Gerencial
+- **Filtragem prévia**: Processa apenas vales relevantes das LDs (redução drástica de memória)
+- **Chunks adaptativos**: 100.000 linhas por chunk para arquivos > 1GB, 50.000 para > 500MB
+- **Pausas mínimas**: 1ms entre chunks para não bloquear UI
+- **Armazenamento otimizado**: Apenas 12 campos necessários por linha
+- **Uma linha por vale**: Prioriza PrimEmissao quando disponível
+- **Limpeza agressiva**: Libera memória após cada chunk
+- **Suporte**: Arquivos de até 3GB
+
+### Dashboard
+- **Debounce**: Atualizações de gráficos com debounce para evitar sobrecarga
+- **Lazy loading**: Gráficos criados apenas quando visíveis
+- **Destruição de gráficos**: Libera memória ao trocar de aba
+- **Cache de dados**: Evita reprocessamento desnecessário
+- **requestAnimationFrame**: Atualizações suaves de UI
+
+## Integração de Inconsistências no Modal de Detalhes
+
+### Funcionalidade
+
+O modal de detalhes de cada LD foi expandido para incluir informações do pós-processamento:
+
+**Seção de Inconsistências do Pós-Processamento:**
+- Exibe apenas quando há dados de pós-processamento disponíveis
+- Filtra resultados por arquivo/LD específica
+- Mostra três tipos de inconsistências:
+  1. **Vales Não Encontrados no CSV** (❌ Vermelho)
+     - Lista até 10 vales com opção de mostrar mais
+  2. **Vales Não Emitidos** (⚠️ Amarelo)
+     - Vales encontrados no CSV mas sem PrimEmissao
+     - Lista até 10 vales com opção de mostrar mais
+  3. **Discrepâncias de Data** (⚠️ Amarelo)
+     - Diferença entre Data GR Rec (CSV) e REALIZADO 2 (LD)
+     - Mostra diferença em dias
+     - Lista até 10 discrepâncias com opção de mostrar mais
+
+**Status Visual na Tabela:**
+- Badges coloridos ao lado do status da LD:
+  - ❌ + número: Quantidade de vales não encontrados
+  - ⚠️ + número: Quantidade de discrepâncias de data
+- Classes CSS aplicadas:
+  - `status-error`: Vales não encontrados
+  - `status-warning`: Discrepâncias de data
+  - `status-success`: Todos os vales OK
 
 ## Segurança
 
@@ -393,6 +686,31 @@ Esta lógica se aplica a:
 - Validação de tipos de arquivo
 - Sanitização de dados de entrada
 - Tratamento de erros robusto
+- Dados persistidos apenas localmente (localStorage)
+
+## Persistência de Dados
+
+### LocalStorage
+- **Uso**: Armazenamento de dados processados no navegador
+- **Estrutura**: JSON serializado com dados completos do processamento
+- **Limite**: ~5-10MB (dependendo do navegador)
+- **Validação**: Sistema verifica tamanho e alerta se necessário
+- **Funcionalidades**:
+  - Salvamento automático após processamento
+  - Carregamento manual de dados salvos
+  - Limpeza de dados salvos
+  - Exibição de informações sobre dados salvos
+
+### Dados Persistidos
+```javascript
+{
+  dataProcessamento: string, // ISO timestamp
+  resultadoPosProcessamento: Object,
+  hashCSV: string,
+  resultadosProcessamento: Array,
+  resultadoValidacao: Object
+}
+```
 
 ## Extensibilidade
 
@@ -400,4 +718,6 @@ A arquitetura permite:
 - Adição de novos formatos de entrada
 - Novos tipos de validação
 - Novos formatos de exportação
+- Novas visualizações no dashboard
 - Integração com APIs futuras
+- Novos tipos de análise e métricas

@@ -9,6 +9,13 @@
 let arquivosSelecionados = [];
 let resultadosProcessamento = [];
 let resultadoValidacao = null;
+let indiceCSVGerencial = null;
+let resultadoPosProcessamento = null;
+
+// Tornar resultadoPosProcessamento acessível globalmente para exportação
+if (typeof window !== 'undefined') {
+  window.resultadoPosProcessamento = null;
+}
 
 // Elementos DOM
 const uploadArea = document.getElementById('uploadArea');
@@ -24,6 +31,22 @@ const tableDados = document.getElementById('tableDados');
 const problemsList = document.getElementById('problemsList');
 const exportFormat = document.getElementById('exportFormat');
 
+// Elementos DOM - Pós-Processamento
+const uploadCSVArea = document.getElementById('uploadCSVArea');
+const csvInput = document.getElementById('csvInput');
+const btnPosProcessar = document.getElementById('btnPosProcessar');
+const posProcessamentoResultados = document.getElementById('posProcessamentoResultados');
+const posStatsGrid = document.getElementById('posStatsGrid');
+const tableDiscrepancias = document.getElementById('tableDiscrepancias');
+const discrepanciasContainer = document.getElementById('discrepanciasContainer');
+const csvLoadingStatus = document.getElementById('csvLoadingStatus');
+const csvLoadingDetails = document.getElementById('csvLoadingDetails');
+
+// Verificar se elementos existem (podem não existir se HTML não foi carregado ainda)
+if (!csvLoadingStatus || !csvLoadingDetails) {
+  // Elementos serão buscados novamente quando necessário
+}
+
 // Event Listeners
 uploadArea.addEventListener('click', () => fileInput.click());
 uploadArea.addEventListener('dragover', handleDragOver);
@@ -33,6 +56,54 @@ fileInput.addEventListener('change', handleFileSelect);
 btnProcessar.addEventListener('click', processarArquivos);
 btnLimpar.addEventListener('click', limparTudo);
 btnExportar.addEventListener('click', exportarResultados);
+
+// Event Listeners - Pós-Processamento
+if (uploadCSVArea) {
+  uploadCSVArea.addEventListener('click', () => csvInput.click());
+}
+if (csvInput) {
+  csvInput.addEventListener('change', handleCSVSelect);
+}
+if (btnPosProcessar) {
+  btnPosProcessar.addEventListener('click', executarPosProcessamento);
+}
+
+// Event Listener para exportação do pós-processamento
+const btnExportarPosProcessamento = document.getElementById('btnExportarPosProcessamento');
+const exportPosProcessamentoFormat = document.getElementById('exportPosProcessamentoFormat');
+if (btnExportarPosProcessamento) {
+  btnExportarPosProcessamento.addEventListener('click', exportarPosProcessamento);
+}
+
+// Event Listeners para Dashboard (será executado quando DOM estiver pronto)
+function inicializarEventListenersDashboard() {
+  // Tabs do dashboard
+  const tabButtons = document.querySelectorAll('.tab-button');
+  tabButtons.forEach(button => {
+    button.addEventListener('click', function() {
+      const tabName = this.getAttribute('data-tab');
+      alternarAbaDashboard(tabName);
+    });
+  });
+  
+  // Filtros do dashboard
+  const btnAplicarFiltros = document.getElementById('btnAplicarFiltros');
+  const btnLimparFiltros = document.getElementById('btnLimparFiltros');
+  
+  if (btnAplicarFiltros) {
+    btnAplicarFiltros.addEventListener('click', aplicarFiltrosDashboard);
+  }
+  if (btnLimparFiltros) {
+    btnLimparFiltros.addEventListener('click', limparFiltrosDashboard);
+  }
+}
+
+// Executar quando DOM estiver pronto
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', inicializarEventListenersDashboard);
+} else {
+  inicializarEventListenersDashboard();
+}
 
 /**
  * @swagger
@@ -190,8 +261,27 @@ function exibirResumoTeste() {
  * Atualiza barra de progresso
  */
 function atualizarProgresso(percentual, texto) {
-  progressFill.style.width = `${percentual}%`;
-  progressFill.textContent = texto || `${Math.round(percentual)}%`;
+  // Garantir que a barra esteja visível
+  if (progressContainer) {
+    progressContainer.classList.add('active');
+    progressContainer.style.display = 'block';
+  }
+  
+  // Atualizar largura da barra
+  if (progressFill) {
+    progressFill.style.width = `${Math.max(0, Math.min(100, percentual))}%`;
+    
+    // Atualizar texto - mostrar percentual e descrição
+    const percentualTexto = `${Math.round(percentual)}%`;
+    const textoCompleto = texto 
+      ? `${percentualTexto} - ${texto}` 
+      : percentualTexto;
+    
+    progressFill.textContent = textoCompleto;
+    
+    // Adicionar título para tooltip (útil para textos longos)
+    progressFill.title = textoCompleto;
+  }
 }
 
 /**
@@ -215,6 +305,12 @@ function exibirResultados() {
   document.getElementById('sectionEstatisticas').classList.remove('hidden');
   document.getElementById('sectionStatus').classList.remove('hidden');
   document.getElementById('sectionExportacao').classList.remove('hidden');
+  
+  // Mostrar seção de pós-processamento
+  const sectionPosProcessamento = document.getElementById('sectionPosProcessamento');
+  if (sectionPosProcessamento) {
+    sectionPosProcessamento.classList.remove('hidden');
+  }
   
   if (resultadoValidacao.problemas.length > 0) {
     document.getElementById('sectionProblemas').classList.remove('hidden');
@@ -274,6 +370,34 @@ function exibirStatus() {
     const infoProcessarNomeERevisao = resultado?.processarNomeERevisao;
     const detalhesProcessamento = resultado?.detalhesProcessamento;
     
+    // Verificar inconsistências do pós-processamento
+    let temInconsistenciasPosProcessamento = false;
+    let badgeInconsistencias = '';
+    if (resultadoPosProcessamento && resultadoPosProcessamento.resultados) {
+      const resultadosArquivo = resultadoPosProcessamento.resultados.filter(r => 
+        r.arquivo === status.nomeArquivo || r.ld === infoProcessarNomeERevisao?.ldFinal
+      );
+      
+      if (resultadosArquivo.length > 0) {
+        const valesNaoEncontrados = resultadosArquivo.filter(r => !r.encontradoNoCSV).length;
+        const discrepanciasData = resultadosArquivo.filter(r => 
+          r.comparacaoData.iguais === false && r.comparacaoData.diferenca !== null
+        ).length;
+        
+        if (valesNaoEncontrados > 0) {
+          statusClass = 'status-error';
+          temInconsistenciasPosProcessamento = true;
+          badgeInconsistencias += ` <span style="color: var(--color-error); font-size: 0.9em;" title="${valesNaoEncontrados} vale(s) não encontrado(s) no CSV">❌ ${valesNaoEncontrados}</span>`;
+        } else if (discrepanciasData > 0) {
+          if (statusClass === 'status-success') {
+            statusClass = 'status-warning';
+          }
+          temInconsistenciasPosProcessamento = true;
+          badgeInconsistencias += ` <span style="color: var(--color-warning); font-size: 0.9em;" title="${discrepanciasData} discrepância(s) de data">⚠️ ${discrepanciasData}</span>`;
+        }
+      }
+    }
+    
     // Criar botão para abrir modal de detalhes
     let btnToggleHtml = '';
     if (infoProcessarNomeERevisao) {
@@ -287,7 +411,10 @@ function exibirStatus() {
           ${btnToggleHtml}
         </div>
       </td>
-      <td><span class="status-badge ${statusClass}">${status.status}</span></td>
+      <td>
+        <span class="status-badge ${statusClass}">${status.status}</span>
+        ${badgeInconsistencias}
+      </td>
     `;
     
     // Adicionar evento para abrir modal com detalhes
@@ -478,6 +605,103 @@ function abrirModalDetalhes(nomeArquivo, infoProcessarNomeERevisao, detalhesProc
     `;
   }
   
+  // Seção de inconsistências do pós-processamento
+  let inconsistenciasPosProcessamentoHtml = '';
+  if (resultadoPosProcessamento && resultadoPosProcessamento.resultados) {
+    // Filtrar resultados por arquivo/LD
+    const resultadosArquivo = resultadoPosProcessamento.resultados.filter(r => 
+      r.arquivo === nomeArquivo || r.ld === infoProcessarNomeERevisao.ldFinal
+    );
+    
+    if (resultadosArquivo.length > 0) {
+      const valesNaoEncontrados = resultadosArquivo.filter(r => !r.encontradoNoCSV);
+      const valesNaoEmitidos = resultadosArquivo.filter(r => r.encontradoNoCSV && !r.emitido);
+      const discrepanciasData = resultadosArquivo.filter(r => 
+        r.comparacaoData.iguais === false && r.comparacaoData.diferenca !== null
+      );
+      
+      const temInconsistencias = valesNaoEncontrados.length > 0 || 
+                                 valesNaoEmitidos.length > 0 || 
+                                 discrepanciasData.length > 0;
+      
+      if (temInconsistencias) {
+        let inconsistenciasLista = [];
+        
+        if (valesNaoEncontrados.length > 0) {
+          inconsistenciasLista.push(`
+            <div style="margin-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <span style="color: var(--color-error); font-size: 1.2em;">❌</span>
+                <strong style="color: var(--color-error);">Vales Não Encontrados no CSV (${valesNaoEncontrados.length})</strong>
+              </div>
+              <ul style="margin-left: 24px; color: var(--color-text);">
+                ${valesNaoEncontrados.slice(0, 10).map(r => `<li>${r.noVale || 'N/A'}</li>`).join('')}
+                ${valesNaoEncontrados.length > 10 ? `<li><em>... e mais ${valesNaoEncontrados.length - 10} vales</em></li>` : ''}
+              </ul>
+            </div>
+          `);
+        }
+        
+        if (valesNaoEmitidos.length > 0) {
+          inconsistenciasLista.push(`
+            <div style="margin-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <span style="color: var(--color-warning); font-size: 1.2em;">⚠️</span>
+                <strong style="color: var(--color-warning);">Vales Não Emitidos (${valesNaoEmitidos.length})</strong>
+              </div>
+              <ul style="margin-left: 24px; color: var(--color-text);">
+                ${valesNaoEmitidos.slice(0, 10).map(r => `<li>${r.noVale || 'N/A'}</li>`).join('')}
+                ${valesNaoEmitidos.length > 10 ? `<li><em>... e mais ${valesNaoEmitidos.length - 10} vales</em></li>` : ''}
+              </ul>
+            </div>
+          `);
+        }
+        
+        if (discrepanciasData.length > 0) {
+          inconsistenciasLista.push(`
+            <div style="margin-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <span style="color: var(--color-warning); font-size: 1.2em;">⚠️</span>
+                <strong style="color: var(--color-warning);">Discrepâncias de Data (${discrepanciasData.length})</strong>
+              </div>
+              <ul style="margin-left: 24px; color: var(--color-text);">
+                ${discrepanciasData.slice(0, 10).map(r => {
+                  const diferenca = r.comparacaoData.diferenca;
+                  const sinal = diferenca > 0 ? '+' : '';
+                  return `<li>${r.noVale || 'N/A'}: Diferença de ${sinal}${diferenca} dias</li>`;
+                }).join('')}
+                ${discrepanciasData.length > 10 ? `<li><em>... e mais ${discrepanciasData.length - 10} discrepâncias</em></li>` : ''}
+              </ul>
+            </div>
+          `);
+        }
+        
+        inconsistenciasPosProcessamentoHtml = `
+          <div class="detalhes-section" style="border-left: 4px solid var(--color-warning); background: #fff3cd20;">
+            <div class="detalhes-section-title">🔍 Inconsistências do Pós-Processamento</div>
+            <div style="padding: 12px;">
+              ${inconsistenciasLista.join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        inconsistenciasPosProcessamentoHtml = `
+          <div class="detalhes-section" style="border-left: 4px solid var(--color-success); background: #d4edda20;">
+            <div class="detalhes-section-title">✅ Validação do Pós-Processamento</div>
+            <div style="padding: 12px; color: var(--color-success);">
+              <strong>Todos os vales foram validados com sucesso!</strong>
+              <ul style="margin-top: 8px; margin-left: 24px;">
+                <li>✓ Todos os vales encontrados no CSV</li>
+                <li>✓ Todos os vales emitidos (PrimEmissao)</li>
+                <li>✓ Nenhuma discrepância de data</li>
+              </ul>
+            </div>
+          </div>
+        `;
+      }
+    }
+  }
+  
   // Montar conteúdo completo
   const conteudoModal = `
     <div class="processar-nome-revisao-detalhes">
@@ -513,6 +737,7 @@ function abrirModalDetalhes(nomeArquivo, infoProcessarNomeERevisao, detalhesProc
           ${avisoInconsistencia}
         </div>
         ${detalhesProcessamentoHtml}
+        ${inconsistenciasPosProcessamentoHtml}
         ${tabelaErrosHtml}
       </div>
     </div>
@@ -697,9 +922,826 @@ function limparTudo() {
   document.getElementById('sectionDados').classList.add('hidden');
   document.getElementById('sectionExportacao').classList.add('hidden');
   
+  // Limpar pós-processamento
+  indiceCSVGerencial = null;
+  resultadoPosProcessamento = null;
+  if (typeof window !== 'undefined') {
+    window.resultadoPosProcessamento = null;
+  }
+  if (csvInput) csvInput.value = '';
+  if (posProcessamentoResultados) posProcessamentoResultados.classList.add('hidden');
+  if (posStatsGrid) posStatsGrid.innerHTML = '';
+  if (tableDiscrepancias) tableDiscrepancias.querySelector('tbody').innerHTML = '';
+  if (discrepanciasContainer) discrepanciasContainer.classList.add('hidden');
+  if (btnPosProcessar) btnPosProcessar.disabled = true;
+  if (csvLoadingStatus) csvLoadingStatus.classList.add('hidden');
+  if (csvLoadingDetails) csvLoadingDetails.textContent = '';
+  if (document.getElementById('sectionPosProcessamento')) {
+    document.getElementById('sectionPosProcessamento').classList.add('hidden');
+  }
+  if (document.getElementById('csvUploadText')) {
+    document.getElementById('csvUploadText').textContent = 'Selecione o CSV Gerencial Consolidado';
+  }
+  
   // Limpar tabelas
   tableStatus.querySelector('tbody').innerHTML = '';
   tableDados.querySelector('tbody').innerHTML = '';
   problemsList.innerHTML = '';
   statsGrid.innerHTML = '';
+}
+
+/**
+ * @swagger
+ * Manipula seleção de arquivo CSV gerencial
+ */
+async function handleCSVSelect(e) {
+  const arquivo = e.target.files[0];
+  if (!arquivo) {
+    return;
+  }
+  
+  if (!arquivo.name.toLowerCase().endsWith('.csv')) {
+    alert('Por favor, selecione um arquivo CSV.');
+    csvInput.value = '';
+    return;
+  }
+  
+  // Verificar se há LDs processadas
+  if (!resultadosProcessamento || resultadosProcessamento.length === 0) {
+    alert('Por favor, processe as LDs primeiro antes de carregar o CSV gerencial.');
+    csvInput.value = '';
+    return;
+  }
+  
+  // Coletar todos os NO VALE das LDs processadas para filtrar o CSV
+  atualizarProgresso(0, 'Coletando números de vale das LDs processadas...');
+  const valesParaBuscar = coletarValesDasLDs(resultadosProcessamento);
+  
+  if (valesParaBuscar.size === 0) {
+    alert('Nenhum vale válido encontrado nas LDs processadas. Processe as LDs primeiro.');
+    csvInput.value = '';
+    progressContainer.classList.remove('active');
+    return;
+  }
+  
+  // Verificar tamanho do arquivo (apenas informativo)
+  const tamanhoMB = arquivo.size / (1024 * 1024);
+  const tamanhoGB = arquivo.size / (1024 * 1024 * 1024);
+  
+  // Aviso informativo para arquivos muito grandes (mas permitir)
+  if (tamanhoGB >= 1) {
+    const confirmar = confirm(
+      `📊 Arquivo grande detectado (${tamanhoGB.toFixed(2)} GB).\n\n` +
+      `O sistema irá filtrar apenas os ${valesParaBuscar.size.toLocaleString()} vales presentes nas LDs.\n\n` +
+      `Isso reduzirá drasticamente o uso de memória e tempo de processamento.\n\n` +
+      `Deseja continuar?`
+    );
+    
+    if (!confirmar) {
+      csvInput.value = '';
+      progressContainer.classList.remove('active');
+      return;
+    }
+  }
+  
+  btnPosProcessar.disabled = true;
+  
+  // Mostrar status de carregamento (buscar elemento se não existir)
+  const loadingStatus = document.getElementById('csvLoadingStatus');
+  const loadingDetails = document.getElementById('csvLoadingDetails');
+  
+  if (loadingStatus) {
+    loadingStatus.classList.remove('hidden');
+  }
+  
+  // Garantir que a barra de progresso esteja visível
+  progressContainer.classList.add('active');
+  progressContainer.style.display = 'block';
+  
+  try {
+    const tamanhoTexto = tamanhoGB >= 1 
+      ? `${tamanhoGB.toFixed(2)} GB` 
+      : `${tamanhoMB.toFixed(2)} MB`;
+    
+    // Atualizar progresso inicial imediatamente
+    const textoInicial = `Iniciando... ${tamanhoTexto} | ${valesParaBuscar.size.toLocaleString()} vales para buscar`;
+    atualizarProgresso(0, textoInicial);
+    
+    if (loadingDetails) {
+      loadingDetails.textContent = textoInicial;
+    }
+    
+    // Pequeno delay para garantir que a UI seja atualizada
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const resultado = await carregarCSVGerencial(arquivo, valesParaBuscar, (percentual, texto) => {
+      // Atualizar progresso com animação suave
+      atualizarProgresso(percentual, texto);
+      
+      // Atualizar detalhes de carregamento (buscar elemento novamente para garantir)
+      const detailsEl = document.getElementById('csvLoadingDetails');
+      if (detailsEl) {
+        detailsEl.textContent = texto || `${Math.round(percentual)}%`;
+      }
+    });
+    
+    indiceCSVGerencial = resultado.indice;
+    
+    // Atualizar interface com informações detalhadas
+    const infoText = resultado.valesEncontrados === resultado.totalValesParaBuscar
+      ? `CSV carregado: ${resultado.totalLinhas.toLocaleString()} linhas lidas, ${resultado.linhasProcessadas.toLocaleString()} filtradas, ${resultado.valesEncontrados.toLocaleString()}/${resultado.totalValesParaBuscar.toLocaleString()} vales encontrados (100%)`
+      : `CSV carregado: ${resultado.totalLinhas.toLocaleString()} linhas lidas, ${resultado.linhasProcessadas.toLocaleString()} filtradas, ${resultado.valesEncontrados.toLocaleString()}/${resultado.totalValesParaBuscar.toLocaleString()} vales encontrados (${Math.round((resultado.valesEncontrados / resultado.totalValesParaBuscar) * 100)}%)`;
+    
+    document.getElementById('csvUploadText').textContent = infoText;
+    
+    // Aviso se nem todos os vales foram encontrados
+    if (resultado.valesEncontrados < resultado.totalValesParaBuscar) {
+      const valesNaoEncontrados = resultado.totalValesParaBuscar - resultado.valesEncontrados;
+      console.warn(`⚠️ ${valesNaoEncontrados} vales das LDs não foram encontrados no CSV gerencial.`);
+    }
+    
+    btnPosProcessar.disabled = false;
+    
+    atualizarProgresso(100, 'CSV carregado com sucesso!');
+    
+    const detailsEl = document.getElementById('csvLoadingDetails');
+    if (detailsEl) {
+      detailsEl.textContent = `✅ Carregado: ${resultado.valesEncontrados}/${resultado.totalValesParaBuscar} vales encontrados`;
+    }
+    
+    // Ocultar status de carregamento após um delay
+    setTimeout(() => {
+      const statusEl = document.getElementById('csvLoadingStatus');
+      if (statusEl) {
+        statusEl.classList.add('hidden');
+      }
+      progressContainer.classList.remove('active');
+    }, 2000);
+    
+  } catch (erro) {
+    console.error('Erro ao carregar CSV:', erro);
+    
+    let mensagemErro = erro.message || 'Erro desconhecido ao carregar CSV';
+    
+    // Tratar erros específicos de memória
+    const tamanhoTexto = tamanhoGB >= 1 
+      ? `${tamanhoGB.toFixed(2)} GB` 
+      : `${tamanhoMB.toFixed(2)} MB`;
+    
+    if (mensagemErro.includes('memory') || mensagemErro.includes('Memory') || 
+        mensagemErro.includes('out of memory') || mensagemErro.includes('Out of memory')) {
+      mensagemErro = 
+        `❌ Erro de memória ao processar CSV.\n\n` +
+        `O arquivo (${tamanhoTexto}) pode estar excedendo a capacidade do navegador.\n\n` +
+        `Soluções:\n` +
+        `1. Feche outras abas e aplicações para liberar memória\n` +
+        `2. Reinicie o navegador e tente novamente\n` +
+        `3. Use um navegador 64-bit com mais memória disponível\n` +
+        `4. Se possível, filtre o CSV antes (apenas vales relevantes)\n` +
+        `5. Considere dividir o arquivo se o problema persistir\n\n` +
+        `Tamanho do arquivo: ${tamanhoTexto}`;
+    }
+    
+    alert(mensagemErro);
+    csvInput.value = '';
+    progressContainer.classList.remove('active');
+    btnPosProcessar.disabled = true;
+    
+    // Ocultar status de carregamento
+    const statusEl = document.getElementById('csvLoadingStatus');
+    const detailsEl = document.getElementById('csvLoadingDetails');
+    if (statusEl) {
+      statusEl.classList.add('hidden');
+    }
+    if (detailsEl) {
+      detailsEl.textContent = '';
+    }
+    
+    // Limpar referências para liberar memória
+    indiceCSVGerencial = null;
+    if (document.getElementById('csvUploadText')) {
+      document.getElementById('csvUploadText').textContent = 'Selecione o CSV Gerencial Consolidado';
+    }
+  }
+}
+
+/**
+ * @swagger
+ * Processa pós-processamento validando LDs contra CSV gerencial
+ */
+async function executarPosProcessamento() {
+  if (!indiceCSVGerencial) {
+    alert('Por favor, carregue o CSV gerencial primeiro.');
+    return;
+  }
+  
+  if (!resultadosProcessamento || resultadosProcessamento.length === 0) {
+    alert('Por favor, processe as LDs primeiro.');
+    return;
+  }
+  
+  btnPosProcessar.disabled = true;
+  progressContainer.classList.add('active');
+  posProcessamentoResultados.classList.add('hidden');
+  
+  try {
+    atualizarProgresso(0, 'Processando validação...');
+    
+    // Processar em chunks para não bloquear UI
+    setTimeout(() => {
+      try {
+        // Chamar função do postprocessor.js (que é síncrona e retorna um objeto diretamente)
+        // Como postprocessor.js é carregado antes de app.js, a função está no escopo global
+        // Verificar se a função existe e não é a função async de app.js (que foi renomeada)
+        if (typeof processarPosProcessamento !== 'function') {
+          throw new Error('Função processarPosProcessamento não encontrada. Verifique se postprocessor.js foi carregado.');
+        }
+        
+        // Verificar se não é a função async (que tem 0 parâmetros)
+        // A função do postprocessor.js tem 3 parâmetros
+        if (processarPosProcessamento.length !== 3) {
+          throw new Error('Função processarPosProcessamento incorreta. Esperada função com 3 parâmetros do postprocessor.js');
+        }
+        
+        // Chamar a função síncrona do postprocessor.js
+        resultadoPosProcessamento = processarPosProcessamento(
+          resultadosProcessamento,
+          indiceCSVGerencial,
+          (percentual, texto) => {
+            atualizarProgresso(percentual, texto);
+          }
+        );
+        
+        // Verificar se o resultado é uma Promise (não deveria ser, mas verificar por segurança)
+        if (resultadoPosProcessamento && typeof resultadoPosProcessamento.then === 'function') {
+          console.error('Erro: processarPosProcessamento retornou uma Promise quando deveria retornar um objeto');
+          console.error('Tipo do resultado:', typeof resultadoPosProcessamento);
+          console.error('Resultado:', resultadoPosProcessamento);
+          throw new Error('A função de processamento retornou uma Promise inesperadamente. Verifique se está chamando a função correta.');
+        }
+        
+        // Verificar se o resultado é válido
+        if (!resultadoPosProcessamento) {
+          throw new Error('Resultado do pós-processamento é inválido');
+        }
+        
+        // Garantir que resultados seja um array
+        if (!Array.isArray(resultadoPosProcessamento.resultados)) {
+          console.error('Resultado inválido:', resultadoPosProcessamento);
+          // Se não é array, tentar criar um array vazio
+          if (resultadoPosProcessamento && typeof resultadoPosProcessamento === 'object') {
+            resultadoPosProcessamento.resultados = [];
+          } else {
+            throw new Error('Resultado do pós-processamento não é um objeto válido');
+          }
+        }
+        
+        // Tornar acessível globalmente para exportação
+        if (typeof window !== 'undefined') {
+          window.resultadoPosProcessamento = resultadoPosProcessamento;
+        }
+        
+        // Exibir resultados
+        exibirResultadosPosProcessamento();
+        
+        atualizarProgresso(100, 'Validação concluída!');
+        
+        // Salvar dados automaticamente após um pequeno delay para garantir que tudo está pronto
+        setTimeout(() => {
+          salvarDadosPosProcessamento();
+        }, 500);
+        
+        setTimeout(() => {
+          progressContainer.classList.remove('active');
+        }, 1000);
+      } catch (erro) {
+        console.error('Erro ao processar pós-processamento:', erro);
+        alert(`Erro ao processar validação: ${erro.message}`);
+        progressContainer.classList.remove('active');
+        btnPosProcessar.disabled = false;
+      }
+    }, 100);
+    
+  } catch (erro) {
+    console.error('Erro ao processar pós-processamento:', erro);
+    alert(`Erro ao processar validação: ${erro.message}`);
+    progressContainer.classList.remove('active');
+  } finally {
+    btnPosProcessar.disabled = false;
+  }
+}
+
+/**
+ * @swagger
+ * Exibe resultados do pós-processamento
+ */
+function exibirResultadosPosProcessamento() {
+  if (!resultadoPosProcessamento) {
+    return;
+  }
+  
+  // Exibir estatísticas
+  exibirEstatisticasPosProcessamento();
+  
+  // Exibir discrepâncias de data
+  exibirDiscrepanciasData();
+  
+  // Mover conteúdo para a aba de resultados do dashboard
+  const posProcessamentoResultadosTab = document.getElementById('posProcessamentoResultadosTab');
+  if (posProcessamentoResultadosTab) {
+    // Clonar conteúdo
+    const statsClone = posStatsGrid ? posStatsGrid.cloneNode(true) : null;
+    const exportSection = posProcessamentoResultados ? posProcessamentoResultados.querySelector('.export-section') : null;
+    const exportClone = exportSection ? exportSection.cloneNode(true) : null;
+    const discrepanciasClone = discrepanciasContainer ? discrepanciasContainer.cloneNode(true) : null;
+    
+    posProcessamentoResultadosTab.innerHTML = '';
+    if (statsClone) posProcessamentoResultadosTab.appendChild(statsClone);
+    if (exportClone) posProcessamentoResultadosTab.appendChild(exportClone);
+    if (discrepanciasClone) posProcessamentoResultadosTab.appendChild(discrepanciasClone);
+    
+    // Reatribuir event listeners para botões clonados
+    const btnExportarClonado = posProcessamentoResultadosTab.querySelector('#btnExportarPosProcessamento');
+    if (btnExportarClonado) {
+      btnExportarClonado.addEventListener('click', exportarPosProcessamento);
+    }
+  }
+  
+  // Mostrar seção de resultados (original, será ocultada quando dashboard estiver ativo)
+  posProcessamentoResultados.classList.remove('hidden');
+  
+  // Mostrar seção de dashboard
+  const sectionDashboard = document.getElementById('sectionDashboard');
+  if (sectionDashboard) {
+    sectionDashboard.classList.remove('hidden');
+  }
+  
+  // Inicializar dashboard se a aba estiver ativa
+  const tabDashboard = document.getElementById('tabDashboard');
+  if (tabDashboard && !tabDashboard.classList.contains('hidden')) {
+    inicializarDashboard();
+  }
+}
+
+/**
+ * @swagger
+ * Exibe estatísticas do pós-processamento
+ */
+function exibirEstatisticasPosProcessamento() {
+  const stats = resultadoPosProcessamento;
+  
+  posStatsGrid.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-value">${stats.totalLinhasProcessadas}</div>
+      <div class="stat-label">Total Processado</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.valesEncontrados}</div>
+      <div class="stat-label">Vales Encontrados</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.valesNaoEncontrados}</div>
+      <div class="stat-label">Vales Não Encontrados</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.valesEmitidos}</div>
+      <div class="stat-label">Vales Emitidos</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.discrepânciasData}</div>
+      <div class="stat-label">Discrepâncias de Data</div>
+    </div>
+  `;
+}
+
+/**
+ * @swagger
+ * Exporta resultados do pós-processamento
+ */
+function exportarPosProcessamento() {
+  if (!resultadoPosProcessamento) {
+    alert('Nenhum resultado de pós-processamento para exportar. Processe a validação primeiro.');
+    return;
+  }
+  
+  const formato = exportPosProcessamentoFormat ? exportPosProcessamentoFormat.value : 'json';
+  const nomeArquivo = `pos_processamento_${new Date().toISOString().split('T')[0]}`;
+  
+  if (typeof exportarPosProcessamentoDados === 'function') {
+    exportarPosProcessamentoDados(resultadoPosProcessamento, formato, nomeArquivo);
+  } else {
+    alert('Função de exportação não disponível. Verifique se exporter.js foi carregado.');
+  }
+}
+
+/**
+ * @swagger
+ * Alterna entre abas do dashboard
+ * @param {string} tabName - Nome da aba ('resultados' ou 'dashboard')
+ */
+function alternarAbaDashboard(tabName) {
+  const tabResultados = document.getElementById('tabResultados');
+  const tabDashboard = document.getElementById('tabDashboard');
+  const tabButtons = document.querySelectorAll('.tab-button');
+  
+  // Atualizar botões
+  tabButtons.forEach(btn => {
+    if (btn.getAttribute('data-tab') === tabName) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+  
+  // Mostrar/ocultar conteúdo
+  if (tabName === 'resultados') {
+    if (tabResultados) {
+      tabResultados.classList.remove('hidden');
+      tabResultados.classList.add('active');
+    }
+    if (tabDashboard) {
+      tabDashboard.classList.add('hidden');
+      tabDashboard.classList.remove('active');
+      // Destruir gráficos ao sair do dashboard
+      if (typeof destruirGraficos === 'function') {
+        destruirGraficos();
+      }
+    }
+    // Mostrar seção original de resultados
+    if (posProcessamentoResultados) {
+      posProcessamentoResultados.classList.remove('hidden');
+    }
+  } else if (tabName === 'dashboard') {
+    if (tabResultados) {
+      tabResultados.classList.remove('hidden');
+      tabResultados.classList.add('active');
+    }
+    if (tabDashboard) {
+      tabDashboard.classList.remove('hidden');
+      tabDashboard.classList.add('active');
+      // Ocultar seção original de resultados
+      if (posProcessamentoResultados) {
+        posProcessamentoResultados.classList.add('hidden');
+      }
+      // Inicializar dashboard
+      inicializarDashboard();
+    }
+  }
+}
+
+/**
+ * @swagger
+ * Inicializa o dashboard
+ */
+function inicializarDashboard() {
+  if (!resultadoPosProcessamento || !resultadosProcessamento) {
+    console.warn('Dados não disponíveis para dashboard');
+    return;
+  }
+  
+  // Preparar dados mesclados
+  if (typeof prepararDadosMesclados === 'function') {
+    const dadosMesclados = prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamento);
+    
+    // Popular filtros
+    popularFiltrosDashboard(dadosMesclados);
+    
+    // Aplicar filtros iniciais e atualizar gráficos
+    aplicarFiltrosDashboard();
+  } else {
+    console.error('Função prepararDadosMesclados não encontrada');
+  }
+}
+
+/**
+ * @swagger
+ * Popula os filtros do dashboard com valores disponíveis
+ * @param {Array} dadosMesclados - Dados mesclados
+ */
+function popularFiltrosDashboard(dadosMesclados) {
+  const projetos = [...new Set(dadosMesclados.map(d => d.projetoSE).filter(p => p))].sort();
+  const empresas = [...new Set(dadosMesclados.map(d => d.empresa).filter(e => e))].sort();
+  const lds = [...new Set(dadosMesclados.map(d => d.ld).filter(l => l))].sort();
+  const disciplinas = [...new Set(dadosMesclados.map(d => d.disciplina).filter(d => d))].sort();
+  const formatos = [...new Set(dadosMesclados.map(d => d.formato).filter(f => f))].sort();
+  
+  // Popular select de projetos
+  const filterProjeto = document.getElementById('filterProjeto');
+  if (filterProjeto) {
+    filterProjeto.innerHTML = '<option value="">Todos</option>' + 
+      projetos.map(p => `<option value="${p}">${p}</option>`).join('');
+  }
+  
+  // Popular select de empresas
+  const filterEmpresa = document.getElementById('filterEmpresa');
+  if (filterEmpresa) {
+    filterEmpresa.innerHTML = '<option value="">Todos</option>' + 
+      empresas.map(e => `<option value="${e}">${e}</option>`).join('');
+  }
+  
+  // Popular select de LDs
+  const filterLD = document.getElementById('filterLD');
+  if (filterLD) {
+    filterLD.innerHTML = '<option value="">Todos</option>' + 
+      lds.map(l => `<option value="${l}">${l}</option>`).join('');
+  }
+  
+  // Popular select de disciplinas
+  const filterDisciplina = document.getElementById('filterDisciplina');
+  if (filterDisciplina) {
+    filterDisciplina.innerHTML = '<option value="">Todos</option>' + 
+      disciplinas.map(d => `<option value="${d}">${d}</option>`).join('');
+  }
+  
+  // Popular select de formatos
+  const filterFormato = document.getElementById('filterFormato');
+  if (filterFormato) {
+    filterFormato.innerHTML = '<option value="">Todos</option>' + 
+      formatos.map(f => `<option value="${f}">${f}</option>`).join('');
+  }
+}
+
+/**
+ * @swagger
+ * Aplica filtros do dashboard e atualiza gráficos
+ */
+function aplicarFiltrosDashboard() {
+  if (!resultadoPosProcessamento || !resultadosProcessamento) return;
+  
+  // Coletar valores dos filtros
+  const filterProjeto = document.getElementById('filterProjeto');
+  const filterEmpresa = document.getElementById('filterEmpresa');
+  const filterLD = document.getElementById('filterLD');
+  const filterDisciplina = document.getElementById('filterDisciplina');
+  const filterFormato = document.getElementById('filterFormato');
+  const filterDataInicio = document.getElementById('filterDataInicio');
+  const filterDataFim = document.getElementById('filterDataFim');
+  
+  const filtros = {
+    projetos: filterProjeto ? Array.from(filterProjeto.selectedOptions).map(o => o.value).filter(v => v) : [],
+    empresas: filterEmpresa ? Array.from(filterEmpresa.selectedOptions).map(o => o.value).filter(v => v) : [],
+    lds: filterLD ? Array.from(filterLD.selectedOptions).map(o => o.value).filter(v => v) : [],
+    disciplinas: filterDisciplina ? Array.from(filterDisciplina.selectedOptions).map(o => o.value).filter(v => v) : [],
+    formatos: filterFormato ? Array.from(filterFormato.selectedOptions).map(o => o.value).filter(v => v) : [],
+    dataInicio: filterDataInicio ? filterDataInicio.value : null,
+    dataFim: filterDataFim ? filterDataFim.value : null
+  };
+  
+  // Preparar dados mesclados
+  if (typeof prepararDadosMesclados === 'function' && typeof aplicarFiltros === 'function') {
+    const dadosMesclados = prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamento);
+    const dadosFiltrados = aplicarFiltros(dadosMesclados, filtros);
+    
+    // Atualizar gráficos
+    if (typeof atualizarTodosGraficos === 'function') {
+      atualizarTodosGraficos(dadosFiltrados);
+    }
+  }
+}
+
+/**
+ * @swagger
+ * Limpa filtros do dashboard
+ */
+function limparFiltrosDashboard() {
+  const filterProjeto = document.getElementById('filterProjeto');
+  const filterEmpresa = document.getElementById('filterEmpresa');
+  const filterLD = document.getElementById('filterLD');
+  const filterDisciplina = document.getElementById('filterDisciplina');
+  const filterFormato = document.getElementById('filterFormato');
+  const filterDataInicio = document.getElementById('filterDataInicio');
+  const filterDataFim = document.getElementById('filterDataFim');
+  
+  if (filterProjeto) filterProjeto.selectedIndex = 0;
+  if (filterEmpresa) filterEmpresa.selectedIndex = 0;
+  if (filterLD) filterLD.selectedIndex = 0;
+  if (filterDisciplina) filterDisciplina.selectedIndex = 0;
+  if (filterFormato) filterFormato.selectedIndex = 0;
+  if (filterDataInicio) filterDataInicio.value = '';
+  if (filterDataFim) filterDataFim.value = '';
+  
+  // Reaplicar filtros (vazios)
+  aplicarFiltrosDashboard();
+}
+
+/**
+ * @swagger
+ * Salva dados do pós-processamento no navegador
+ */
+function salvarDadosPosProcessamento() {
+  if (!resultadoPosProcessamento || !resultadosProcessamento || !resultadoValidacao) {
+    console.log('Dados não disponíveis para salvar:', {
+      temPosProcessamento: !!resultadoPosProcessamento,
+      temResultadosProcessamento: !!resultadosProcessamento,
+      temResultadoValidacao: !!resultadoValidacao
+    });
+    return;
+  }
+  
+  try {
+    // Calcular hash simples do CSV (usando timestamp como proxy)
+    const hashCSV = indiceCSVGerencial ? `csv_${Date.now()}` : null;
+    
+    const dadosParaSalvar = {
+      dataProcessamento: new Date().toISOString(),
+      resultadoPosProcessamento: resultadoPosProcessamento,
+      hashCSV: hashCSV,
+      resultadosProcessamento: resultadosProcessamento,
+      resultadoValidacao: resultadoValidacao
+    };
+    
+    // Serializar dados
+    const dadosSerializados = JSON.stringify(dadosParaSalvar);
+    
+    // Verificar tamanho (limite do localStorage é ~5-10MB dependendo do navegador)
+    const tamanhoMB = new Blob([dadosSerializados]).size / (1024 * 1024);
+    if (tamanhoMB > 5) {
+      console.warn('Dados muito grandes para salvar no localStorage:', tamanhoMB.toFixed(2), 'MB');
+      alert(`Aviso: Os dados são muito grandes (${tamanhoMB.toFixed(2)} MB) e podem não ser salvos completamente. Limite recomendado: 5 MB.`);
+    }
+    
+    // Salvar no localStorage
+    localStorage.setItem('posProcessamento_dados', dadosSerializados);
+    
+    // Atualizar interface
+    exibirInfoDadosSalvos();
+    
+    console.log('Dados salvos com sucesso no localStorage');
+  } catch (erro) {
+    console.error('Erro ao salvar dados:', erro);
+    if (erro.name === 'QuotaExceededError') {
+      alert('Erro: Espaço insuficiente no navegador. Limpe dados salvos ou use outro navegador.');
+    }
+  }
+}
+
+/**
+ * @swagger
+ * Carrega dados salvos do pós-processamento
+ */
+function carregarDadosPosProcessamento() {
+  try {
+    const dadosSalvos = localStorage.getItem('posProcessamento_dados');
+    if (!dadosSalvos) {
+      alert('Nenhum dado salvo encontrado.');
+      return;
+    }
+    
+    const dados = JSON.parse(dadosSalvos);
+    
+    // Restaurar dados
+    resultadoPosProcessamento = dados.resultadoPosProcessamento;
+    resultadosProcessamento = dados.resultadosProcessamento;
+    resultadoValidacao = dados.resultadoValidacao;
+    
+    // Tornar global
+    if (typeof window !== 'undefined') {
+      window.resultadoPosProcessamento = resultadoPosProcessamento;
+    }
+    
+    // Atualizar interface
+    exibirResultados();
+    exibirResultadosPosProcessamento();
+    
+    // Mostrar mensagem de sucesso
+    const dataProcessamento = new Date(dados.dataProcessamento);
+    alert(`Dados carregados com sucesso!\n\nProcessados em: ${dataProcessamento.toLocaleString('pt-BR')}`);
+    
+    console.log('Dados carregados com sucesso do localStorage');
+  } catch (erro) {
+    console.error('Erro ao carregar dados:', erro);
+    alert('Erro ao carregar dados salvos. Os dados podem estar corrompidos.');
+  }
+}
+
+/**
+ * @swagger
+ * Limpa dados salvos do pós-processamento
+ */
+function limparDadosSalvos() {
+  if (confirm('Tem certeza que deseja limpar os dados salvos? Esta ação não pode ser desfeita.')) {
+    try {
+      localStorage.removeItem('posProcessamento_dados');
+      exibirInfoDadosSalvos();
+      alert('Dados salvos foram removidos com sucesso.');
+    } catch (erro) {
+      console.error('Erro ao limpar dados:', erro);
+      alert('Erro ao limpar dados salvos.');
+    }
+  }
+}
+
+/**
+ * @swagger
+ * Exibe informações sobre dados salvos
+ */
+function exibirInfoDadosSalvos() {
+  const container = document.getElementById('dadosSalvosContainer');
+  const info = document.getElementById('dadosSalvosInfo');
+  
+  if (!container || !info) return;
+  
+  try {
+    const dadosSalvos = localStorage.getItem('posProcessamento_dados');
+    if (dadosSalvos) {
+      const dados = JSON.parse(dadosSalvos);
+      const dataProcessamento = new Date(dados.dataProcessamento);
+      
+      container.style.display = 'block';
+      info.innerHTML = `
+        <strong>Último processamento:</strong> ${dataProcessamento.toLocaleString('pt-BR')}<br>
+        <strong>Total de documentos:</strong> ${dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0}
+      `;
+    } else {
+      container.style.display = 'none';
+    }
+  } catch (erro) {
+    console.error('Erro ao exibir info de dados salvos:', erro);
+    container.style.display = 'none';
+  }
+}
+
+// Event Listeners para dados salvos
+function inicializarEventListenersDadosSalvos() {
+  const btnCarregarDadosSalvos = document.getElementById('btnCarregarDadosSalvos');
+  const btnSalvarDadosAtuais = document.getElementById('btnSalvarDadosAtuais');
+  const btnLimparDadosSalvos = document.getElementById('btnLimparDadosSalvos');
+  
+  if (btnCarregarDadosSalvos) {
+    btnCarregarDadosSalvos.addEventListener('click', carregarDadosPosProcessamento);
+  }
+  if (btnSalvarDadosAtuais) {
+    btnSalvarDadosAtuais.addEventListener('click', salvarDadosPosProcessamento);
+  }
+  if (btnLimparDadosSalvos) {
+    btnLimparDadosSalvos.addEventListener('click', limparDadosSalvos);
+  }
+  
+  // Verificar e exibir dados salvos ao carregar página
+  exibirInfoDadosSalvos();
+}
+
+// Executar quando DOM estiver pronto
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', inicializarEventListenersDadosSalvos);
+} else {
+  inicializarEventListenersDadosSalvos();
+}
+
+/**
+ * @swagger
+ * Exibe tabela de discrepâncias de data
+ */
+function exibirDiscrepanciasData() {
+  const discrepancias = resultadoPosProcessamento.resultados.filter(r => 
+    r.comparacaoData.iguais === false && r.comparacaoData.diferenca !== null
+  );
+  
+  if (discrepancias.length === 0) {
+    discrepanciasContainer.classList.add('hidden');
+    return;
+  }
+  
+  discrepanciasContainer.classList.remove('hidden');
+  const tbody = tableDiscrepancias.querySelector('tbody');
+  tbody.innerHTML = '';
+  
+  discrepancias.forEach(resultado => {
+    const tr = document.createElement('tr');
+    
+    // Formatar data GR Rec
+    let dataGRRecText = 'N/A';
+    if (resultado.comparacaoData.dataCSV) {
+      dataGRRecText = resultado.comparacaoData.dataCSV.toLocaleDateString('pt-BR');
+    } else if (resultado.dadosCSV.dataGRRec) {
+      dataGRRecText = String(resultado.dadosCSV.dataGRRec);
+    }
+    
+    // Formatar REALIZADO 2
+    let realizado2Text = 'N/A';
+    if (resultado.comparacaoData.dataLD) {
+      realizado2Text = resultado.comparacaoData.dataLD.toLocaleDateString('pt-BR');
+    } else if (resultado.realizado2Original) {
+      realizado2Text = String(resultado.realizado2Original);
+    }
+    
+    // Sugestão de ação
+    let acaoSugerida = 'Verificar';
+    if (resultado.comparacaoData.diferenca > 0) {
+      acaoSugerida = `Ajustar LD: Data GR Rec está ${Math.abs(resultado.comparacaoData.diferenca)} dias antes`;
+    } else if (resultado.comparacaoData.diferenca < 0) {
+      acaoSugerida = `Ajustar LD: Data GR Rec está ${Math.abs(resultado.comparacaoData.diferenca)} dias depois`;
+    }
+    
+    tr.innerHTML = `
+      <td>${resultado.noVale || ''}</td>
+      <td>${resultado.arquivo || ''}</td>
+      <td>${dataGRRecText}</td>
+      <td>${realizado2Text}</td>
+      <td style="font-weight: 600; color: var(--color-error);">${resultado.comparacaoData.diferenca} dias</td>
+      <td>${acaoSugerida}</td>
+    `;
+    
+    tbody.appendChild(tr);
+  });
 }

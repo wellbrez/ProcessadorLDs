@@ -1,7 +1,7 @@
 # GUIA-DESENVOLVIMENTO.md - ProcessadorLDs
 
 **Autor:** Wellington Bravin  
-**Data:** 21/01/2026
+**Data:** 26/01/2026
 
 ## Guia para Desenvolvedores
 
@@ -21,7 +21,10 @@ ProcessadorLDs/
 ├── js/
 │   ├── processor.js       # Lógica de processamento
 │   ├── validator.js        # Validações
-│   └── exporter.js         # Exportação
+│   ├── exporter.js         # Exportação
+│   ├── postprocessor.js    # Pós-processamento com CSV
+│   ├── dashboard.js        # Visualizações e gráficos
+│   └── app.js              # Orquestração da aplicação
 ├── css/
 │   └── styles.css          # Estilos
 └── docs/                   # Documentação adicional
@@ -261,6 +264,110 @@ Exporta dados para JSON.
 - `dados` (Object): Dados a exportar
 - `nomeArquivo` (string): Nome do arquivo
 
+#### `exportarPosProcessamentoDados(resultadoPosProcessamento, formato, nomeArquivo)`
+Exporta dados do pós-processamento em formato específico.
+
+**Parâmetros:**
+- `resultadoPosProcessamento` (Object): Resultado do pós-processamento
+- `formato` (string): 'csv', 'xlsx' ou 'json'
+- `nomeArquivo` (string): Nome do arquivo de saída
+
+**Retorna:**
+- Arquivo baixado automaticamente
+
+### postprocessor.js
+
+#### `coletarValesDasLDs(dadosLDs)`
+Coleta todos os números de vale das LDs processadas para filtragem prévia do CSV.
+
+**Parâmetros:**
+- `dadosLDs` (Array): Array de dados processados das LDs
+
+**Retorna:**
+- `Set<string>`: Set com números de vale normalizados
+
+#### `carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)`
+Carrega CSV gerencial de forma otimizada, filtrando apenas vales relevantes.
+
+**Parâmetros:**
+- `arquivo` (File): Arquivo CSV gerencial
+- `valesParaBuscar` (Set<string>): Set de vales para filtrar
+- `callbackProgresso` (Function): Função para atualizar progresso
+
+**Retorna:**
+- `Promise<Object>`: Índice do CSV por número do vale
+
+**Otimizações:**
+- Chunks de 100.000 linhas para arquivos > 1GB
+- Armazena apenas 12 campos necessários
+- Uma linha por vale (prioriza PrimEmissao)
+- Filtragem prévia durante carregamento
+
+#### `processarPosProcessamento(dadosLDs, indiceCSV, callbackProgresso)`
+Processa validação de todas as LDs contra o CSV gerencial.
+
+**Parâmetros:**
+- `dadosLDs` (Array): Dados processados das LDs
+- `indiceCSV` (Map): Índice do CSV por número do vale
+- `callbackProgresso` (Function): Callback para atualizar progresso
+
+**Retorna:**
+- `Object`: Resultado com validações e discrepâncias
+
+### dashboard.js
+
+#### `prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamento)`
+Combina dados das LDs com dados do CSV em um dataset unificado.
+
+**Parâmetros:**
+- `resultadosProcessamento` (Array): Dados processados das LDs
+- `resultadoPosProcessamento` (Object): Resultado do pós-processamento
+
+**Retorna:**
+- `Array`: Dados mesclados com todos os campos necessários
+
+#### `aplicarFiltros(dadosMesclados, filtros)`
+Aplica filtros aos dados mesclados.
+
+**Parâmetros:**
+- `dadosMesclados` (Array): Dados mesclados
+- `filtros` (Object): Objeto com filtros (projetos, empresas, lds, disciplinas, formatos, dataInicio, dataFim)
+
+**Retorna:**
+- `Array`: Dados filtrados
+
+#### `atualizarTodosGraficos(dadosFiltrados)`
+Atualiza todos os gráficos do dashboard com dados filtrados.
+
+**Parâmetros:**
+- `dadosFiltrados` (Array): Dados filtrados para visualização
+
+#### `destruirGraficos()`
+Destrói todos os gráficos para liberar memória.
+
+### app.js
+
+#### `executarPosProcessamento()`
+Executa o pós-processamento com CSV gerencial.
+
+#### `exibirResultadosPosProcessamento()`
+Exibe resultados do pós-processamento na interface.
+
+#### `alternarAbaDashboard(tabName)`
+Alterna entre abas "Resultados" e "Dashboard".
+
+**Parâmetros:**
+- `tabName` (string): 'resultados' ou 'dashboard'
+
+#### `inicializarDashboard()`
+Inicializa o dashboard com dados disponíveis.
+
+#### `salvarDadosPosProcessamento()`
+Salva dados do pós-processamento no localStorage.
+
+#### `carregarDadosPosProcessamento()`
+Carrega dados salvos do localStorage.
+
 ## Tabela de Conversão de Colunas
 
 O sistema usa uma tabela de conversão para normalizar nomes de colunas. Esta tabela deve ser mantida atualizada conforme novos formatos são identificados.
@@ -331,8 +438,51 @@ console.log('Dados após transformação:', dadosTransformados);
 
 ### Limites
 
-- Tamanho máximo de arquivo: 10MB
-- Número máximo de linhas por arquivo: 100.000
+- Tamanho máximo de arquivo LD: 10MB
+- Tamanho máximo de CSV gerencial: 3GB (com otimizações)
+- Número máximo de linhas por arquivo LD: 100.000
+- Número máximo de linhas no CSV gerencial: Ilimitado (com filtragem prévia)
+- Limite de localStorage: ~5-10MB (dependendo do navegador)
+
+## Estrutura de Dados do Pós-Processamento
+
+### Resultado do Pós-Processamento
+
+```javascript
+{
+  totalLinhasProcessadas: number,
+  valesEncontrados: number,
+  valesNaoEncontrados: number,
+  valesEmitidos: number,
+  valesNaoEmitidos: number,
+  discrepânciasData: number,
+  resultados: [
+    {
+      noVale: string,
+      arquivo: string,
+      ld: string,
+      revisao: string,
+      encontradoNoCSV: boolean,
+      emitido: boolean,
+      dadosCSV: {
+        dataGRRec: Date,
+        finDev: string,
+        projetoSE: string,
+        empresa: string,
+        title: string,
+        // ... outros campos
+      },
+      comparacaoData: {
+        iguais: boolean | null,
+        dataCSV: Date | null,
+        dataLD: Date | null,
+        diferenca: number | null
+      },
+      realizado2Original: string | null
+    }
+  ]
+}
+```
 
 ## Contribuindo
 
@@ -343,8 +493,63 @@ console.log('Dados após transformação:', dadosTransformados);
 5. Documente mudanças
 6. Faça pull request
 
+## Notas sobre Performance
+
+### Processamento de CSV Grande
+
+Ao trabalhar com arquivos grandes (3GB+), considere:
+- Filtragem prévia é essencial (coletar vales das LDs primeiro)
+- Chunks grandes reduzem overhead
+- Pausas mínimas mantêm UI responsiva
+- Armazenamento mínimo economiza memória
+
+### Dashboard
+
+- Gráficos são destruídos ao trocar de aba para liberar memória
+- Use `destruirGraficos()` antes de criar novos
+- Cache dados processados para evitar reprocessamento
+- Implemente debounce para atualizações de filtros
+
+## Novos Módulos
+
+### Pós-Processamento (postprocessor.js)
+
+Este módulo adiciona validação contra um CSV gerencial do sistema oficial.
+
+**Principais funcionalidades:**
+- Carregamento otimizado de CSVs grandes (até 3GB)
+- Filtragem prévia baseada em vales das LDs
+- Validação de emissão (PrimEmissao)
+- Comparação de datas (Data GR Rec vs REALIZADO 2)
+
+**Otimizações implementadas:**
+- Processamento em chunks grandes (100.000 linhas)
+- Armazenamento mínimo (apenas campos necessários)
+- Filtragem durante carregamento
+- Pausas mínimas para não bloquear UI
+
+### Dashboard (dashboard.js)
+
+Módulo dedicado para criação e gerenciamento de visualizações avançadas.
+
+**Bibliotecas utilizadas:**
+- Chart.js 4.4.0 para gráficos 2D
+- Plotly.js 2.27.0 para gráficos 3D e mapas de calor
+
+**Visualizações disponíveis:**
+- 6 gráficos Chart.js (temporal, Gantt, distribuição, barras empilhadas, dispersão, área)
+- 4 visualizações Plotly.js (mapas de calor e 3D)
+
+**Gerenciamento de memória:**
+- Destruição de gráficos ao trocar de aba
+- Cache de dados processados
+- Lazy loading de gráficos
+
 ## Recursos
 
 - [SheetJS Documentation](https://docs.sheetjs.com/)
 - [PapaParse Documentation](https://www.papaparse.com/)
+- [Chart.js Documentation](https://www.chartjs.org/docs/latest/)
+- [Plotly.js Documentation](https://plotly.com/javascript/)
 - [MDN Web Docs](https://developer.mozilla.org/)
+- [LocalStorage API](https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage)
