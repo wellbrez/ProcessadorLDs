@@ -44,10 +44,14 @@ Processar múltiplas LDs em diversos formatos (CSV, XLSX), extrair dados relevan
 
 5. **Pós-Processamento com CSV Gerencial**
    - Validação de vales contra extrato oficial
-   - Verificação de emissão (PrimEmissao)
+   - **Cálculo dinâmico de EMISSAO**: Ordenação customizada de revisões e atribuição automática (FICHA, PRIMEMISSAO, REVISAO)
+   - **Cálculo dinâmico de PRIMCERTIFICACAO**: Identificação automática da primeira certificação por vale
+   - Verificação de emissão usando EMISSAO calculado (não mais lido do CSV)
    - Comparação de datas (Data GR Rec vs REALIZADO 2)
    - Identificação de discrepâncias
    - Exportação de resultados de validação
+   - **Filtragem otimizada**: Considera apenas 'Número Vale' e 'Num. Vale Antigo' para identificar vales
+   - **Estrutura de dados**: Armazena múltiplas linhas por vale (necessário para ordenação e cálculos)
 
 6. **Dashboard Profissional**
    - 10 visualizações avançadas

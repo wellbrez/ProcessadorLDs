@@ -286,6 +286,45 @@ Coleta todos os números de vale das LDs processadas para filtragem prévia do C
 **Retorna:**
 - `Set<string>`: Set com números de vale normalizados
 
+#### `calcularOrdemRevisao(revisao)`
+Calcula ordem numérica para ordenação de revisões.
+
+**Parâmetros:**
+- `revisao` (string|number): Valor da revisão
+
+**Retorna:**
+- `number`: Ordem numérica (-1 → 0, A-Z → 1-26, 0+ → 27+)
+
+#### `calcularEmissaoParaVale(linhasCSV)`
+Calcula EMISSAO dinamicamente para um grupo de linhas do mesmo vale.
+
+**Parâmetros:**
+- `linhasCSV` (Array): Array de linhas do CSV do mesmo vale
+
+**Retorna:**
+- `Array`: Linhas ordenadas com campo EMISSAO calculado (FICHA, PRIMEMISSAO, REVISAO)
+
+**Lógica:**
+1. Ordena por ordem de revisão (usando `calcularOrdemRevisao`)
+2. Linhas com revisão '-1' → 'FICHA'
+3. Primeira linha não-FICHA → 'PRIMEMISSAO'
+4. Demais linhas não-FICHA → 'REVISAO'
+
+#### `calcularPrimCertificacaoParaVale(linhasCSV)`
+Calcula PRIMCERTIFICACAO para um grupo de linhas do mesmo vale.
+
+**Parâmetros:**
+- `linhasCSV` (Array): Array de linhas já ordenadas (deve ter sido processado por `calcularEmissaoParaVale`)
+
+**Retorna:**
+- `Array`: Linhas com campo PRIMCERTIFICACAO calculado (boolean)
+
+**Critérios para PRIMCERTIFICACAO:**
+- Revisão numérica (não alfabética e não '-1')
+- 'Tp. Emissão' ≠ 'B'
+- 'Final. Devol' = 'APR'
+- Primeira linha que atende aos critérios recebe `true`
+
 #### `carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)`
 Carrega CSV gerencial de forma otimizada, filtrando apenas vales relevantes.
 
@@ -295,24 +334,32 @@ Carrega CSV gerencial de forma otimizada, filtrando apenas vales relevantes.
 - `callbackProgresso` (Function): Função para atualizar progresso
 
 **Retorna:**
-- `Promise<Object>`: Índice do CSV por número do vale
+- `Promise<Map>`: Map<valeNormalizado, Array<linhaReduzida>> - Múltiplas linhas por vale
 
 **Otimizações:**
 - Chunks de 100.000 linhas para arquivos > 1GB
-- Armazena apenas 12 campos necessários
-- Uma linha por vale (prioriza PrimEmissao)
+- Armazena apenas campos necessários (14 campos)
+- Múltiplas linhas por vale (necessário para ordenação e cálculos)
 - Filtragem prévia durante carregamento
+- Identificação de vales usa apenas 'Número Vale' e 'Num. Vale Antigo'
+- Campos removidos: 'EMISSAO' (calculado dinamicamente), 'NUMEROABAIXO', 'GR REC ABAIXO'
 
 #### `processarPosProcessamento(dadosLDs, indiceCSV, callbackProgresso)`
 Processa validação de todas as LDs contra o CSV gerencial.
 
 **Parâmetros:**
 - `dadosLDs` (Array): Dados processados das LDs
-- `indiceCSV` (Map): Índice do CSV por número do vale
+- `indiceCSV` (Map): Map<valeNormalizado, Array<linhaReduzida>> do CSV
 - `callbackProgresso` (Function): Callback para atualizar progresso
 
 **Retorna:**
 - `Object`: Resultado com validações e discrepâncias
+
+**Processamento:**
+1. Para cada vale, aplica `calcularEmissaoParaVale()` para calcular EMISSAO dinamicamente
+2. Aplica `calcularPrimCertificacaoParaVale()` para calcular PRIMCERTIFICACAO
+3. Usa linhas com EMISSAO='PRIMEMISSAO' para verificação de emissão
+4. Usa linhas com PRIMCERTIFICACAO=true para verificação de certificação
 
 ### dashboard.js
 

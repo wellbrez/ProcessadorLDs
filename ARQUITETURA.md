@@ -249,6 +249,34 @@ function normalizarNumeroVale(noVale)
 
 /**
  * @swagger
+ * Calcula ordem numérica para ordenação de revisões
+ * Ordem: -1 → 0, A-Z → 1-26, 0+ → 27+
+ * @param {string|number} revisao - Valor da revisão
+ * @returns {number} Ordem numérica para ordenação
+ */
+function calcularOrdemRevisao(revisao)
+
+/**
+ * @swagger
+ * Calcula EMISSAO dinamicamente para um grupo de linhas do mesmo vale
+ * Ordena linhas por Número Vale e depois por ordem de revisão
+ * Atribui: -1 → FICHA, primeira não-FICHA → PRIMEMISSAO, demais → REVISAO
+ * @param {Array} linhasCSV - Array de linhas do CSV do mesmo vale
+ * @returns {Array} Array de linhas ordenadas com campo EMISSAO calculado
+ */
+function calcularEmissaoParaVale(linhasCSV)
+
+/**
+ * @swagger
+ * Calcula PRIMCERTIFICACAO para um grupo de linhas do mesmo vale
+ * Encontra primeira linha com revisão numérica, tp≠B, Final.Devol=APR
+ * @param {Array} linhasCSV - Array de linhas do CSV já ordenadas (deve ter sido processado por calcularEmissaoParaVale)
+ * @returns {Array} Array de linhas com campo PRIMCERTIFICACAO calculado
+ */
+function calcularPrimCertificacaoParaVale(linhasCSV)
+
+/**
+ * @swagger
  * Coleta todos os números de vale das LDs processadas
  * @param {Array} dadosLDs - Array de dados processados das LDs
  * @returns {Set<string>} Set com todos os números de vale normalizados
@@ -258,18 +286,21 @@ function coletarValesDasLDs(dadosLDs)
 /**
  * @swagger
  * Carrega CSV gerencial de forma otimizada (até 3GB)
+ * Filtra apenas vales relevantes durante carregamento
+ * Armazena múltiplas linhas por vale (necessário para ordenação e cálculos)
  * @param {File} arquivo - Arquivo CSV gerencial
  * @param {Set<string>} valesParaBuscar - Set de vales para filtrar
  * @param {Function} callbackProgresso - Callback para atualizar progresso
- * @returns {Promise<Object>} Índice do CSV por número do vale
+ * @returns {Promise<Map>} Map<valeNormalizado, Array<linhaReduzida>> - Índice do CSV por número do vale
  */
 function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
 
 /**
  * @swagger
  * Processa pós-processamento de todas as LDs validadas contra o CSV
+ * Aplica cálculos dinâmicos de EMISSAO e PRIMCERTIFICACAO
  * @param {Array} dadosLDs - Array de dados processados das LDs
- * @param {Map} indiceCSV - Índice do CSV por número do vale
+ * @param {Map} indiceCSV - Map<valeNormalizado, Array<linhaReduzida>> do CSV
  * @param {Function} callbackProgresso - Função callback para atualizar progresso
  * @returns {Object} Objeto consolidado com resultados do pós-processamento
  */
@@ -278,10 +309,39 @@ function processarPosProcessamento(dadosLDs, indiceCSV, callbackProgresso)
 
 **Otimizações para Arquivos Grandes:**
 - Filtragem prévia: Processa apenas vales relevantes das LDs
+- Identificação de vales: Usa apenas 'Número Vale' e 'Num. Vale Antigo' (desconsidera outras colunas durante filtragem)
 - Chunks grandes: 100.000 linhas por chunk para arquivos > 1GB
 - Pausas mínimas: 1ms entre chunks para não bloquear UI
-- Armazenamento mínimo: Apenas 12 campos necessários por linha
-- Uma linha por vale: Prioriza PrimEmissao quando disponível
+- Armazenamento mínimo: Apenas campos necessários por linha (14 campos)
+- Múltiplas linhas por vale: Armazena todas as linhas de cada vale (necessário para ordenação e cálculos)
+
+**Campos Extraídos do CSV:**
+- Campos para identificação: 'Número Vale', 'Num. Vale Antigo'
+- Campos para cálculos: 'Revisão', 'Tp. Emissão', 'Final. Devol'
+- Campos removidos do processamento inicial: 'EMISSAO' (calculado dinamicamente), 'NUMEROABAIXO', 'GR REC ABAIXO'
+- Outros campos: 'Data GR Rec', 'Projeto/SE', 'Empresa', 'Title', 'GR Recebimento', 'Status', 'Fase', 'Formato', 'Responsável'
+
+**Cálculo Dinâmico de EMISSAO:**
+1. Agrupa linhas por vale (Número Vale normalizado)
+2. Ordena linhas de cada vale:
+   - Primeiro por 'Número Vale' (já agrupado)
+   - Depois por ordem de revisão usando `calcularOrdemRevisao()`:
+     - Revisão '-1' → ordem 0 (primeira)
+     - Revisões alfabéticas (A-Z) → ordem 1-26
+     - Revisões numéricas (0+) → ordem 27+
+3. Atribui EMISSAO:
+   - Linhas com revisão '-1' → 'FICHA'
+   - Primeira linha não-FICHA → 'PRIMEMISSAO'
+   - Demais linhas não-FICHA → 'REVISAO'
+
+**Cálculo Dinâmico de PRIMCERTIFICACAO:**
+1. Para cada grupo de linhas do mesmo vale (já ordenadas):
+2. Percorre linhas em ordem até encontrar primeira que atende:
+   - Revisão é numérica (não alfabética e não '-1')
+   - 'Tp. Emissão' ≠ 'B'
+   - 'Final. Devol' = 'APR'
+3. Marca essa linha com `PRIMCERTIFICACAO = true`
+4. Demais linhas recebem `PRIMCERTIFICACAO = false`
 
 ### 6. Dashboard (dashboard.js)
 
