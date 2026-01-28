@@ -229,12 +229,20 @@ function exportarPosProcessamentoDados(resultadoPosProcessamento, formato, nomeA
 
 **Responsabilidades:**
 - Carregamento e processamento de CSV gerencial (otimizado para arquivos grandes)
-- Validação de vales contra extrato oficial
+- Validação de vales contra extrato oficial do sistema
 - Cálculo dinâmico de EMISSAO (PRIMEMISSAO, REVISAO, FICHA) baseado em ordenação de revisões
 - Cálculo dinâmico de PRIMCERTIFICACAO (primeira certificação por vale)
 - Verificação de emissão usando EMISSAO calculado
+- Verificação de certificação usando PRIMCERTIFICACAO calculado
 - Comparação de datas (Data GR Rec vs REALIZADO 2)
 - Coleta de vales das LDs para filtragem prévia
+
+**CSV Gerencial Consolidado:**
+- Extrato oficial do sistema de gestão de documentos
+- Contém histórico completo de vales e revisões
+- Arquivos podem chegar a 3GB
+- Colunas principais: Número Vale, Num. Vale Antigo, Revisão, Tp. Emissão, Final. Devol, Data GR Rec, Projeto/SE, Empresa, Title, etc.
+- Colunas removidas do processamento: EMISSAO (calculado dinamicamente), NUMEROABAIXO, GR REC ABAIXO
 
 **Funções Principais:**
 

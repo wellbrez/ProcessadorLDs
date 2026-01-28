@@ -92,15 +92,35 @@ A interface exibirá:
 ### 6. Pós-Processamento com CSV Gerencial
 
 1. Após processar as LDs, você verá a seção "Pós-Processamento com CSV Gerencial"
-2. Clique na área de upload e selecione o arquivo CSV Gerencial Consolidado
+2. Clique na área de upload e selecione o arquivo **CSV Gerencial Consolidado**
+   - **O que é**: Extrato oficial do sistema de gestão de documentos
    - Arquivo esperado: `RELATORIO_GERENCIAL_CONSOLIDADO_*.csv`
    - Sistema aceita arquivos de até 3GB com otimização automática
+   - Contém histórico completo de vales e suas revisões
 3. Aguarde o carregamento (barra de progresso será exibida)
+   - Sistema filtra automaticamente apenas vales das LDs processadas
+   - Processamento otimizado em chunks para arquivos grandes
 4. Clique em "Processar Validação"
-5. Visualize:
-   - Estatísticas de validação
+5. O sistema realiza automaticamente:
+   - **Cálculo de EMISSAO**: Ordena revisões e identifica primeira emissão (PRIMEMISSAO)
+   - **Cálculo de PRIMCERTIFICACAO**: Identifica primeira certificação baseado em critérios
+   - **Validação**: Compara dados das LDs com dados do CSV
+6. Visualize:
+   - Estatísticas de validação (vales encontrados, emitidos, certificados)
+   - Status de certificação (No Prazo, Atraso Leve, Atraso, Pendente)
    - Exportação de resultados (CSV, JSON, XLSX)
    - Discrepâncias de data identificadas
+
+**Processo de Emissão:**
+- Sistema ordena revisões de cada vale (-1 → A-Z → 0+)
+- Identifica primeira emissão (PRIMEMISSAO) excluindo fichas (revisão -1)
+- Data de emissão: Data GR Rec da linha com PRIMEMISSAO (prevalece CSV sobre LD)
+
+**Processo de Certificação:**
+- Sistema identifica primeira linha que atende: revisão numérica, Tp. Emissão ≠ 'B', Final. Devol = 'APR'
+- Data de certificação: Data GR Rec da linha com PRIMCERTIFICACAO = true
+- Data prevista: Data Previsto (LD) + 14 dias corridos
+- Status calculado comparando data real vs prevista
 
 ### 7. Dashboard de Análise
 

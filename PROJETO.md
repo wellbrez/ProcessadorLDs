@@ -270,15 +270,139 @@ Arquivo XLSX com:
    - Nenhuma linha válida após filtros
    - Mensagem: "Nenhuma linha foi contabilizada, verifique se está no formato adequado e se o 'previsto' está preenchido corretamente, com datas válidas (dd/MM/yyyy ou dd/MM/yy)"
 
+## CSV Gerencial Consolidado
+
+### O que é o CSV Gerencial
+
+O **CSV Gerencial Consolidado** é um extrato oficial do sistema de gestão de documentos que contém informações detalhadas sobre todos os vales (documentos) processados no sistema. Este arquivo é usado como fonte de verdade para validação dos dados processados das LDs.
+
+**Características:**
+- Arquivo CSV de grande porte (pode chegar a 3GB)
+- Contém histórico completo de vales e suas revisões
+- Inclui informações sobre emissão, certificação e status de cada documento
+- É o extrato oficial do sistema (fonte de verdade)
+
+### Colunas Principais do CSV
+
+O sistema extrai e processa as seguintes colunas do CSV gerencial:
+
+**Colunas para Identificação:**
+- **Número Vale**: Número principal do vale/documento (usado para matching)
+- **Num. Vale Antigo**: Número alternativo do vale (usado como fallback para matching)
+
+**Colunas para Cálculos de Emissão e Certificação:**
+- **Revisão**: Revisão do documento (pode ser '-1', alfabética A-Z, ou numérica 0+)
+- **Tp. Emissão**: Tipo de emissão (ex: 'B' para bloqueado, outros valores para emitido)
+- **Final. Devol**: Finalidade de devolução (ex: 'APR' para aprovado/certificado)
+
+**Colunas de Dados:**
+- **Data GR Rec**: Data de recebimento do GR (usada para data de emissão e certificação)
+- **Projeto/SE**: Projeto ou SE associado
+- **Empresa**: Empresa responsável
+- **Title**: Título do documento
+- **GR Recebimento**: Número do GR de recebimento
+- **Status**: Status atual do documento
+- **Fase**: Fase do documento
+- **Formato**: Formato do arquivo
+- **Responsável**: Responsável pelo documento
+
+**Colunas Removidas do Processamento:**
+- **EMISSAO**: Não é lida do CSV (calculada dinamicamente pelo sistema)
+- **NUMEROABAIXO**: Não utilizada no processamento
+- **GR REC ABAIXO**: Não utilizada no processamento
+
+### Processo de Emissão
+
+O processo de emissão identifica quando um documento foi emitido pela primeira vez usando dados do CSV gerencial.
+
+**Passo 1: Ordenação de Revisões**
+- Para cada vale, o sistema ordena todas as linhas do CSV por ordem de revisão:
+  - Revisão '-1' → ordem 0 (primeira)
+  - Revisões alfabéticas (A-Z) → ordem 1-26
+  - Revisões numéricas (0+) → ordem 27+
+
+**Passo 2: Cálculo Dinâmico de EMISSAO**
+- Linhas com revisão '-1' → `EMISSAO = 'FICHA'` (documento de ficha, não é emissão)
+- Primeira linha não-FICHA → `EMISSAO = 'PRIMEMISSAO'` (primeira emissão)
+- Demais linhas não-FICHA → `EMISSAO = 'REVISAO'` (revisões subsequentes)
+
+**Passo 3: Identificação de Documento Emitido**
+- Um documento é considerado **emitido** se possui pelo menos uma linha com `EMISSAO = 'PRIMEMISSAO'`
+- A **data de emissão** é a `Data GR Rec` da linha com `EMISSAO = 'PRIMEMISSAO'`
+- **Precedência**: A data do CSV prevalece sobre a data da LD (CSV é fonte oficial)
+
+**Exemplo:**
+```
+Vale: 123456-7-A
+- Linha 1: Revisão '-1', Data GR Rec: 01/01/2025 → EMISSAO = 'FICHA'
+- Linha 2: Revisão '0', Data GR Rec: 15/01/2025 → EMISSAO = 'PRIMEMISSAO' ← Primeira emissão
+- Linha 3: Revisão '1', Data GR Rec: 20/02/2025 → EMISSAO = 'REVISAO'
+
+Resultado: Documento emitido em 15/01/2025
+```
+
+### Processo de Certificação
+
+O processo de certificação identifica quando um documento foi certificado pela primeira vez usando dados do CSV gerencial.
+
+**Passo 1: Identificação da Primeira Certificação**
+- Para cada vale, o sistema percorre as linhas ordenadas até encontrar a primeira que atende aos critérios:
+  1. **Revisão numérica**: Revisão deve ser numérica (não alfabética e não '-1')
+  2. **Tipo de Emissão**: `Tp. Emissão ≠ 'B'` (não bloqueado)
+  3. **Finalidade de Devolução**: `Final. Devol = 'APR'` (aprovado/certificado)
+
+**Passo 2: Cálculo Dinâmico de PRIMCERTIFICACAO**
+- A primeira linha que atende aos critérios recebe `PRIMCERTIFICACAO = true`
+- Todas as outras linhas recebem `PRIMCERTIFICACAO = false`
+
+**Passo 3: Identificação de Documento Certificado**
+- Um documento é considerado **certificado** se possui pelo menos uma linha com `PRIMCERTIFICACAO = true`
+- A **data de certificação** é a `Data GR Rec` da linha com `PRIMCERTIFICACAO = true`
+
+**Passo 4: Cálculo de Data Prevista de Certificação**
+- A **data prevista de certificação** é calculada como: `Data Previsto (LD) + 14 dias corridos`
+- Esta data é usada para comparar com a data real de certificação e calcular atrasos
+
+**Passo 5: Status de Certificação**
+- **No Prazo**: Certificado antes ou na data prevista (diferença ≤ 0 dias)
+- **Atraso Leve**: Certificado até 7 dias após a data prevista
+- **Atraso**: Certificado mais de 7 dias após a data prevista
+- **Pendente**: Não certificado e data prevista já passou
+- **Aguardando**: Não certificado e data prevista ainda não chegou
+- **N/A**: Sem data prevista ou sem dados suficientes
+
+**Exemplo:**
+```
+Vale: 123456-7-A
+- Linha 1: Revisão '0', Tp. Emissão: 'A', Final. Devol: 'REV' → PRIMCERTIFICACAO = false
+- Linha 2: Revisão '1', Tp. Emissão: 'A', Final. Devol: 'APR', Data GR Rec: 20/02/2025 → PRIMCERTIFICACAO = true ← Primeira certificação
+- Linha 3: Revisão '2', Tp. Emissão: 'A', Final. Devol: 'APR', Data GR Rec: 15/03/2025 → PRIMCERTIFICACAO = false
+
+Data Previsto (LD): 01/02/2025
+Data Prevista Certificação: 15/02/2025 (01/02 + 14 dias)
+Data Real Certificação: 20/02/2025
+Status: Atraso Leve (5 dias de atraso)
+```
+
+### Relação entre Emissão e Certificação
+
+- **Emissão** ocorre primeiro (quando o documento é emitido pela primeira vez)
+- **Certificação** pode ocorrer após a emissão (quando o documento é aprovado/certificado)
+- Um documento pode estar **emitido mas não certificado** (emitido mas ainda não aprovado)
+- Um documento **certificado** sempre foi emitido antes (certificação requer emissão prévia)
+
 ## Fluxo de Pós-Processamento
 
 1. **Processamento Inicial**: Processar LDs conforme fluxo principal
 2. **Carregamento CSV Gerencial**: Selecionar arquivo CSV do sistema oficial
-3. **Filtragem Inteligente**: Sistema filtra apenas vales relevantes das LDs processadas
-4. **Validação**: Verificar cada vale contra o CSV gerencial
-5. **Análise**: Identificar vales não encontrados, não emitidos e discrepâncias de data
-6. **Visualização**: Exibir resultados em dashboard com múltiplas visualizações
-7. **Exportação**: Exportar resultados de validação em múltiplos formatos
+3. **Filtragem Inteligente**: Sistema filtra apenas vales relevantes das LDs processadas (usa apenas 'Número Vale' e 'Num. Vale Antigo')
+4. **Armazenamento**: Armazena múltiplas linhas por vale (necessário para ordenação e cálculos)
+5. **Cálculo de EMISSAO**: Para cada vale, ordena linhas e calcula EMISSAO dinamicamente (FICHA, PRIMEMISSAO, REVISAO)
+6. **Cálculo de PRIMCERTIFICACAO**: Para cada vale, identifica primeira certificação baseado em critérios específicos
+7. **Validação**: Verificar cada vale contra o CSV gerencial usando EMISSAO e PRIMCERTIFICACAO calculados
+8. **Análise**: Identificar vales não encontrados, não emitidos, não certificados e discrepâncias de data
+9. **Visualização**: Exibir resultados em dashboard com múltiplas visualizações incluindo status de certificação
+10. **Exportação**: Exportar resultados de validação em múltiplos formatos
 
 ## Dashboard de Análise
 
