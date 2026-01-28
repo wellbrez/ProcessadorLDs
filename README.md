@@ -112,7 +112,7 @@ ProcessadorLDs/
 ## 📖 Uso
 
 ### Processamento Básico
-1. Abra o arquivo `index.html` em um navegador moderno
+1. Abra o arquivo `index.html` em um navegador moderno ou acesse a página https://wellbrez.github.io/ProcessadorLDs/
 2. Selecione um ou mais arquivos de LD (CSV ou XLSX)
 3. Clique em "Processar"
 4. Visualize os resultados e problemas identificados
