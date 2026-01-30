@@ -96,6 +96,136 @@ function inicializarEventListenersDashboard() {
   if (btnLimparFiltros) {
     btnLimparFiltros.addEventListener('click', limparFiltrosDashboard);
   }
+  
+  // Event listeners para botões de toggle período (Mensal/Semanal)
+  inicializarTogglePeriodo();
+}
+
+/**
+ * @swagger
+ * Inicializa os event listeners para os botões de toggle de período (Mensal/Semanal)
+ */
+function inicializarTogglePeriodo() {
+  // Toggle para gráfico Evolução de Documentos por Período (Gantt)
+  const btnGanttMensal = document.getElementById('btnGanttMensal');
+  const btnGanttSemanal = document.getElementById('btnGanttSemanal');
+  
+  if (btnGanttMensal && btnGanttSemanal) {
+    btnGanttMensal.addEventListener('click', () => alternarPeriodoGrafico('gantt', 'mensal'));
+    btnGanttSemanal.addEventListener('click', () => alternarPeriodoGrafico('gantt', 'semanal'));
+  }
+  
+  // Toggle para gráfico Acúmulo de Documentos
+  const btnAcumuloMensal = document.getElementById('btnAcumuloMensal');
+  const btnAcumuloSemanal = document.getElementById('btnAcumuloSemanal');
+  
+  if (btnAcumuloMensal && btnAcumuloSemanal) {
+    btnAcumuloMensal.addEventListener('click', () => alternarPeriodoGrafico('acumulo', 'mensal'));
+    btnAcumuloSemanal.addEventListener('click', () => alternarPeriodoGrafico('acumulo', 'semanal'));
+  }
+  
+  // Toggle para gráfico Acúmulo de Certificação
+  const btnAcumuloCertMensal = document.getElementById('btnAcumuloCertMensal');
+  const btnAcumuloCertSemanal = document.getElementById('btnAcumuloCertSemanal');
+  
+  if (btnAcumuloCertMensal && btnAcumuloCertSemanal) {
+    btnAcumuloCertMensal.addEventListener('click', () => alternarPeriodoGrafico('acumuloCert', 'mensal'));
+    btnAcumuloCertSemanal.addEventListener('click', () => alternarPeriodoGrafico('acumuloCert', 'semanal'));
+  }
+}
+
+/**
+ * @swagger
+ * Alterna o período de um gráfico entre mensal e semanal
+ * @param {string} grafico - Nome do gráfico ('gantt', 'acumulo', 'acumuloCert')
+ * @param {string} periodo - 'mensal' ou 'semanal'
+ */
+function alternarPeriodoGrafico(grafico, periodo) {
+  // Verificar se há dados disponíveis
+  if (!resultadoPosProcessamento || !resultadosProcessamento) {
+    console.warn('Dados não disponíveis para atualizar gráfico');
+    return;
+  }
+  
+  // Atualizar configuração global (se disponível no dashboard.js)
+  if (typeof configPeriodoGraficos !== 'undefined') {
+    configPeriodoGraficos[grafico] = periodo;
+  }
+  
+  // Atualizar estilo dos botões
+  const mapeamentoBotoes = {
+    'gantt': { mensal: 'btnGanttMensal', semanal: 'btnGanttSemanal' },
+    'acumulo': { mensal: 'btnAcumuloMensal', semanal: 'btnAcumuloSemanal' },
+    'acumuloCert': { mensal: 'btnAcumuloCertMensal', semanal: 'btnAcumuloCertSemanal' }
+  };
+  
+  const botoes = mapeamentoBotoes[grafico];
+  if (botoes) {
+    const btnMensal = document.getElementById(botoes.mensal);
+    const btnSemanal = document.getElementById(botoes.semanal);
+    
+    if (btnMensal && btnSemanal) {
+      if (periodo === 'mensal') {
+        btnMensal.classList.add('active');
+        btnMensal.style.background = 'var(--color-primary)';
+        btnMensal.style.color = 'white';
+        btnSemanal.classList.remove('active');
+        btnSemanal.style.background = 'white';
+        btnSemanal.style.color = 'var(--color-primary)';
+      } else {
+        btnSemanal.classList.add('active');
+        btnSemanal.style.background = 'var(--color-primary)';
+        btnSemanal.style.color = 'white';
+        btnMensal.classList.remove('active');
+        btnMensal.style.background = 'white';
+        btnMensal.style.color = 'var(--color-primary)';
+      }
+    }
+  }
+  
+  // Preparar dados mesclados e filtrados
+  const coletarFiltro = typeof coletarValoresFiltro === 'function' 
+    ? coletarValoresFiltro 
+    : function(select) {
+        if (!select) return null;
+        const values = Array.from(select.selectedOptions).map(o => o.value).filter(v => v);
+        const temTodos = Array.from(select.selectedOptions).some(o => o.value === '');
+        return (temTodos || values.length === 0) ? null : values;
+      };
+  
+  const filtros = {
+    projetos: coletarFiltro(document.getElementById('filterProjeto')),
+    empresas: coletarFiltro(document.getElementById('filterEmpresa')),
+    lds: coletarFiltro(document.getElementById('filterLD')),
+    disciplinas: coletarFiltro(document.getElementById('filterDisciplina')),
+    formatos: coletarFiltro(document.getElementById('filterFormato')),
+    dataInicio: document.getElementById('filterDataInicio')?.value || null,
+    dataFim: document.getElementById('filterDataFim')?.value || null
+  };
+  
+  if (typeof prepararDadosMesclados === 'function' && typeof aplicarFiltros === 'function') {
+    const dadosMesclados = prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamento);
+    const dadosFiltrados = aplicarFiltros(dadosMesclados, filtros);
+    
+    // Atualizar apenas o gráfico específico
+    switch (grafico) {
+      case 'gantt':
+        if (typeof criarGraficoGantt === 'function') {
+          criarGraficoGantt(dadosFiltrados, periodo);
+        }
+        break;
+      case 'acumulo':
+        if (typeof criarGraficoAreaAcumulo === 'function') {
+          criarGraficoAreaAcumulo(dadosFiltrados, periodo);
+        }
+        break;
+      case 'acumuloCert':
+        if (typeof criarGraficoAreaAcumuloCertificacao === 'function') {
+          criarGraficoAreaAcumuloCertificacao(dadosFiltrados, periodo);
+        }
+        break;
+    }
+  }
 }
 
 // Executar quando DOM estiver pronto

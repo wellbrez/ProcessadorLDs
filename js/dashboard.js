@@ -22,6 +22,13 @@ const graficosInstancias = {
 // Cache de dados processados
 let dadosProcessadosCache = null;
 
+// Configuração de período para gráficos temporais
+const configPeriodoGraficos = {
+  gantt: 'mensal',
+  acumulo: 'mensal',
+  acumuloCert: 'mensal'
+};
+
 /**
  * @swagger
  * Prepara dados mesclados das LDs e do CSV
@@ -572,91 +579,220 @@ function criarMapaCalorTemporal(dados) {
 
 /**
  * @swagger
- * Cria gráfico 3D de Disciplina × Projeto × Quantidade
+ * Cria gráfico 3D de barras: Disciplina × Status × Quantidade
+ * Mostra quantidade de documentos por disciplina separados por status
  * @param {Array} dados - Dados filtrados
  */
 function criarGrafico3D(dados) {
   const container = document.getElementById('chart3D');
   if (!container || typeof Plotly === 'undefined') return;
   
-  // Agrupar por disciplina e projeto
+  // Limpar container
+  container.innerHTML = '';
+  
+  // Agrupar por disciplina
   const agrupamento = {};
+  
   dados.forEach(d => {
-    if (d.disciplina && d.projetoSE) {
-      const key = `${d.disciplina}|${d.projetoSE}`;
-      if (!agrupamento[key]) {
-        agrupamento[key] = { disciplina: d.disciplina, projeto: d.projetoSE, quantidade: 0, status: [] };
-      }
-      agrupamento[key].quantidade++;
-      if (d.emitido) agrupamento[key].status.push('Emitido');
-      else if (d.encontradoNoCSV) agrupamento[key].status.push('Não Emitido');
-      else agrupamento[key].status.push('Não Encontrado');
+    const disc = d.disciplina || 'N/A';
+    if (!agrupamento[disc]) {
+      agrupamento[disc] = { 
+        certificado: 0,
+        emitidoNaoCertificado: 0,
+        naoEncontrado: 0
+      };
     }
-  });
-  
-  const disciplinas = [];
-  const projetos = [];
-  const quantidades = [];
-  const cores = [];
-  
-  Object.values(agrupamento).forEach(item => {
-    disciplinas.push(item.disciplina);
-    projetos.push(item.projeto);
-    quantidades.push(item.quantidade);
     
-    // Cor baseada no status predominante
-    const emitidos = item.status.filter(s => s === 'Emitido').length;
-    const naoEmitidos = item.status.filter(s => s === 'Não Emitido').length;
-    if (emitidos > naoEmitidos) {
-      cores.push(0); // Verde
-    } else if (naoEmitidos > 0) {
-      cores.push(1); // Amarelo
-    } else {
-      cores.push(2); // Vermelho
+    if (d.certificado) {
+      agrupamento[disc].certificado++;
+    } else if (d.emitido) {
+      agrupamento[disc].emitidoNaoCertificado++;
+    } else if (!d.encontradoNoCSV) {
+      agrupamento[disc].naoEncontrado++;
     }
   });
   
-  const trace = {
-    x: disciplinas,
-    y: projetos,
-    z: quantidades,
-    mode: 'markers',
-    type: 'scatter3d',
-    marker: {
-      size: quantidades.map(q => Math.max(5, Math.min(20, q))),
-      color: cores,
-      colorscale: [[0, 'green'], [0.5, 'yellow'], [1, 'red']],
-      showscale: true,
-      colorbar: {
-        title: 'Status',
-        tickvals: [0, 1, 2],
-        ticktext: ['Emitido', 'Não Emitido', 'Não Encontrado']
-      }
-    }
+  // Ordenar disciplinas por total (decrescente) e pegar top 10
+  const disciplinasOrdenadas = Object.entries(agrupamento)
+    .map(([disc, vals]) => ({
+      disciplina: disc,
+      ...vals,
+      total: vals.certificado + vals.emitidoNaoCertificado + vals.naoEncontrado
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10);
+  
+  if (disciplinasOrdenadas.length === 0) {
+    container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">Sem dados para exibir</div>';
+    return;
+  }
+  
+  const disciplinas = disciplinasOrdenadas.map(d => d.disciplina);
+  const statusList = ['Certificados', 'Emitidos (não cert.)', 'Não encontrados'];
+  const cores = {
+    'Certificados': 'rgba(0, 126, 122, 0.85)',
+    'Emitidos (não cert.)': 'rgba(255, 165, 0, 0.85)',
+    'Não encontrados': 'rgba(255, 99, 132, 0.85)'
   };
+  
+  // Criar traces para barras 3D (usando scatter3d com marcadores de barra)
+  const traces = [];
+  
+  // Preparar dados para cada status
+  statusList.forEach((status, statusIdx) => {
+    const x = [];
+    const y = [];
+    const z = [];
+    const textos = [];
+    
+    disciplinasOrdenadas.forEach((item, discIdx) => {
+      let valor = 0;
+      if (status === 'Certificados') valor = item.certificado;
+      else if (status === 'Emitidos (não cert.)') valor = item.emitidoNaoCertificado;
+      else if (status === 'Não encontrados') valor = item.naoEncontrado;
+      
+      if (valor > 0) {
+        x.push(discIdx);
+        y.push(statusIdx);
+        z.push(valor);
+        textos.push(`${item.disciplina}<br>${status}: ${valor}`);
+      }
+    });
+    
+    if (x.length > 0) {
+      traces.push({
+        type: 'scatter3d',
+        mode: 'markers',
+        name: status,
+        x: x,
+        y: y,
+        z: z,
+        text: textos,
+        hovertemplate: '%{text}<extra></extra>',
+        marker: {
+          size: z.map(v => Math.max(12, Math.min(40, v / 2 + 10))),
+          color: cores[status],
+          symbol: 'square',
+          line: {
+            color: 'rgba(0,0,0,0.3)',
+            width: 1
+          }
+        }
+      });
+    }
+  });
+  
+  // Adicionar linhas verticais (barras) usando linhas
+  const barTraces = [];
+  statusList.forEach((status, statusIdx) => {
+    disciplinasOrdenadas.forEach((item, discIdx) => {
+      let valor = 0;
+      if (status === 'Certificados') valor = item.certificado;
+      else if (status === 'Emitidos (não cert.)') valor = item.emitidoNaoCertificado;
+      else if (status === 'Não encontrados') valor = item.naoEncontrado;
+      
+      if (valor > 0) {
+        barTraces.push({
+          type: 'scatter3d',
+          mode: 'lines',
+          x: [discIdx, discIdx],
+          y: [statusIdx, statusIdx],
+          z: [0, valor],
+          line: {
+            color: cores[status],
+            width: 8
+          },
+          showlegend: false,
+          hoverinfo: 'skip'
+        });
+      }
+    });
+  });
   
   const layout = {
-    title: '',
     scene: {
-      xaxis: { title: 'Disciplina' },
-      yaxis: { title: 'Projeto/SE' },
-      zaxis: { title: 'Quantidade' }
-    }
+      xaxis: { 
+        title: 'Disciplina',
+        tickmode: 'array',
+        tickvals: disciplinas.map((_, i) => i),
+        ticktext: disciplinas.map(d => d.length > 8 ? d.substring(0, 8) + '...' : d),
+        tickfont: { size: 10 }
+      },
+      yaxis: { 
+        title: 'Status',
+        tickmode: 'array',
+        tickvals: [0, 1, 2],
+        ticktext: ['Cert.', 'Emit.', 'N/Enc.'],
+        tickfont: { size: 10 }
+      },
+      zaxis: { 
+        title: 'Quantidade',
+        tickfont: { size: 10 }
+      },
+      camera: {
+        eye: { x: 1.8, y: -1.8, z: 1.0 },
+        center: { x: 0, y: 0, z: -0.2 }
+      },
+      aspectratio: { x: 1.5, y: 1, z: 0.8 }
+    },
+    margin: { l: 0, r: 0, t: 30, b: 0 },
+    legend: {
+      x: 0.02,
+      y: 0.98,
+      bgcolor: 'rgba(255,255,255,0.9)',
+      bordercolor: '#ddd',
+      borderwidth: 1
+    },
+    annotations: [{
+      text: '🔄 Arraste para girar | 🔍 Scroll para zoom | Top 10 Disciplinas',
+      showarrow: false,
+      x: 0.5,
+      y: -0.02,
+      xref: 'paper',
+      yref: 'paper',
+      font: { size: 11, color: '#666' }
+    }]
   };
   
-  Plotly.newPlot(container, [trace], layout, {responsive: true});
+  const config = {
+    responsive: true,
+    displayModeBar: true,
+    modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'],
+    displaylogo: false
+  };
+  
+  Plotly.newPlot(container, [...barTraces, ...traces], layout, config);
 }
 
 
 /**
  * @swagger
- * Cria gráfico de timeline melhorado (substitui Gantt)
+ * Retorna o número da semana ISO de uma data
+ * @param {Date} data - Data para calcular
+ * @returns {string} Ano-Semana no formato "YYYY-W##"
+ */
+function obterSemanaISO(data) {
+  const d = new Date(Date.UTC(data.getFullYear(), data.getMonth(), data.getDate()));
+  const diaSemana = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - diaSemana);
+  const inicioAno = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const semana = Math.ceil((((d - inicioAno) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-S${String(semana).padStart(2, '0')}`;
+}
+
+/**
+ * @swagger
+ * Cria gráfico de barras lado a lado - Evolução de Documentos por Período
  * Mostra distribuição de documentos por período com status
  * @param {Array} dados - Dados filtrados
+ * @param {string} tipoPeriodo - 'mensal' ou 'semanal'
  */
-function criarGraficoGantt(dados) {
+function criarGraficoGantt(dados, tipoPeriodo = null) {
   const canvas = document.getElementById('chartGantt');
   if (!canvas) return;
+  
+  // Usar período da configuração se não especificado
+  const periodo = tipoPeriodo || configPeriodoGraficos.gantt;
   
   if (graficosInstancias.chartGantt) {
     graficosInstancias.chartGantt.destroy();
@@ -668,44 +804,36 @@ function criarGraficoGantt(dados) {
   
   dados.forEach(d => {
     if (d.dataPrevisto) {
-      // Agrupar por mês para melhor visualização
       const data = d.dataPrevisto;
-      const periodo = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+      // Definir período baseado no tipo
+      let periodoKey;
+      if (periodo === 'semanal') {
+        periodoKey = obterSemanaISO(data);
+      } else {
+        periodoKey = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+      }
       
-      if (!agrupamento[periodo]) {
-        agrupamento[periodo] = {
+      if (!agrupamento[periodoKey]) {
+        agrupamento[periodoKey] = {
           total: 0,
           emitido: 0,
-          naoEmitido: 0,
           naoEncontrado: 0,
-          certificado: 0,
-          certificacaoPendente: 0,
-          comDiscrepancia: 0
+          certificado: 0
         };
-        if (!periodos.includes(periodo)) {
-          periodos.push(periodo);
+        if (!periodos.includes(periodoKey)) {
+          periodos.push(periodoKey);
         }
       }
       
-      agrupamento[periodo].total++;
+      agrupamento[periodoKey].total++;
       if (d.emitido) {
-        agrupamento[periodo].emitido++;
-      } else if (d.encontradoNoCSV) {
-        agrupamento[periodo].naoEmitido++;
-      } else {
-        agrupamento[periodo].naoEncontrado++;
+        agrupamento[periodoKey].emitido++;
       }
-      
+      if (!d.encontradoNoCSV) {
+        agrupamento[periodoKey].naoEncontrado++;
+      }
       if (d.certificado) {
-        agrupamento[periodo].certificado++;
-      }
-      
-      if (d.statusCertificacao === 'Pendente') {
-        agrupamento[periodo].certificacaoPendente++;
-      }
-      
-      if (d.diferencaData !== null && d.diferencaData !== 0) {
-        agrupamento[periodo].comDiscrepancia++;
+        agrupamento[periodoKey].certificado++;
       }
     }
   });
@@ -714,70 +842,45 @@ function criarGraficoGantt(dados) {
   
   const totais = periodos.map(p => agrupamento[p].total);
   const emitidos = periodos.map(p => agrupamento[p].emitido);
-  const naoEmitidos = periodos.map(p => agrupamento[p].naoEmitido);
   const naoEncontrados = periodos.map(p => agrupamento[p].naoEncontrado);
   const certificados = periodos.map(p => agrupamento[p].certificado);
-  const certificacaoPendente = periodos.map(p => agrupamento[p].certificacaoPendente);
-  const comDiscrepancia = periodos.map(p => agrupamento[p].comDiscrepancia);
   
   graficosInstancias.chartGantt = new Chart(canvas, {
-    type: 'line',
+    type: 'bar',
     data: {
       labels: periodos,
       datasets: [
         {
-          label: 'Total de Documentos',
+          label: 'Total de documentos',
           data: totais,
+          backgroundColor: 'rgba(54, 162, 235, 0.8)',
           borderColor: 'rgba(54, 162, 235, 1)',
-          backgroundColor: 'rgba(54, 162, 235, 0.2)',
-          tension: 0.1,
-          fill: true
+          borderWidth: 1
         },
         {
           label: 'Emitidos',
           data: emitidos,
-          borderColor: 'rgba(0, 255, 0, 1)',
-          backgroundColor: 'rgba(0, 255, 0, 0.2)',
-          tension: 0.1
+          backgroundColor: 'rgba(75, 192, 92, 0.8)',
+          borderColor: 'rgba(75, 192, 92, 1)',
+          borderWidth: 1
         },
         {
           label: 'Certificados',
           data: certificados,
-          borderColor: 'rgba(0, 200, 255, 1)',
-          backgroundColor: 'rgba(0, 200, 255, 0.2)',
-          tension: 0.1
+          backgroundColor: 'rgba(0, 126, 122, 0.8)',
+          borderColor: 'rgba(0, 126, 122, 1)',
+          borderWidth: 1
         },
         {
-          label: 'Certificação Pendente',
-          data: certificacaoPendente,
-          borderColor: 'rgba(255, 140, 0, 1)',
-          backgroundColor: 'rgba(255, 140, 0, 0.2)',
-          tension: 0.1
-        },
-        {
-          label: 'Não Emitidos',
-          data: naoEmitidos,
-          borderColor: 'rgba(255, 165, 0, 1)',
-          backgroundColor: 'rgba(255, 165, 0, 0.2)',
-          tension: 0.1
-        },
-        {
-          label: 'Não Encontrados',
+          label: 'Não encontrados',
           data: naoEncontrados,
-          borderColor: 'rgba(255, 0, 0, 1)',
-          backgroundColor: 'rgba(255, 0, 0, 0.2)',
-          tension: 0.1
-        },
-        {
-          label: 'Com Discrepância',
-          data: comDiscrepancia,
+          backgroundColor: 'rgba(255, 99, 132, 0.8)',
           borderColor: 'rgba(255, 99, 132, 1)',
-          backgroundColor: 'rgba(255, 99, 132, 0.2)',
-          tension: 0.1,
-          borderDash: [5, 5]
+          borderWidth: 1
         }
       ]
     },
+    plugins: [ChartDataLabels],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -793,6 +896,19 @@ function criarGraficoGantt(dados) {
         title: {
           display: true,
           text: 'Evolução de Documentos por Período'
+        },
+        datalabels: {
+          anchor: 'end',
+          align: 'top',
+          color: '#333',
+          font: {
+            weight: 'bold',
+            size: 10
+          },
+          formatter: function(value) {
+            return value > 0 ? value : '';
+          },
+          offset: -2
         }
       },
       scales: {
@@ -838,9 +954,29 @@ function criarGraficoDistribuicao(dados) {
     contagem[disc] = (contagem[disc] || 0) + 1;
   });
   
-  const labels = Object.keys(contagem);
-  const valores = Object.values(contagem);
+  // Criar array ordenável e ordenar em ordem DECRESCENTE
+  const dadosOrdenados = Object.entries(contagem)
+    .map(([label, valor]) => ({ label, valor }))
+    .sort((a, b) => b.valor - a.valor);
+  
+  const labels = dadosOrdenados.map(d => d.label);
+  const valores = dadosOrdenados.map(d => d.valor);
   const total = valores.reduce((a, b) => a + b, 0);
+  
+  // Gerar cores suficientes para todos os itens
+  const coresPadrao = [
+    'rgba(255, 99, 132, 0.8)',
+    'rgba(54, 162, 235, 0.8)',
+    'rgba(255, 206, 86, 0.8)',
+    'rgba(75, 192, 192, 0.8)',
+    'rgba(153, 102, 255, 0.8)',
+    'rgba(255, 159, 64, 0.8)',
+    'rgba(199, 199, 199, 0.8)',
+    'rgba(83, 102, 255, 0.8)',
+    'rgba(255, 99, 255, 0.8)',
+    'rgba(99, 255, 132, 0.8)'
+  ];
+  const cores = labels.map((_, i) => coresPadrao[i % coresPadrao.length]);
   
   // Criar labels com número e percentual
   const labelsComPercentual = labels.map((label, index) => {
@@ -849,7 +985,7 @@ function criarGraficoDistribuicao(dados) {
     return `${label}\n${valor} (${percentual}%)`;
   });
   
-  // Criar tabela de resumo
+  // Criar tabela de resumo (já ordenada em ordem decrescente)
   const container = canvas.parentElement;
   let resumoTable = container.querySelector('.distribuicao-resumo-table');
   if (!resumoTable) {
@@ -892,14 +1028,7 @@ function criarGraficoDistribuicao(dados) {
       labels: labelsComPercentual,
       datasets: [{
         data: valores,
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.8)',
-          'rgba(54, 162, 235, 0.8)',
-          'rgba(255, 206, 86, 0.8)',
-          'rgba(75, 192, 192, 0.8)',
-          'rgba(153, 102, 255, 0.8)',
-          'rgba(255, 159, 64, 0.8)'
-        ]
+        backgroundColor: cores
       }]
     },
     options: {
@@ -948,12 +1077,15 @@ function criarGraficoBarrasEmpilhadas(dados) {
     const projeto = d.projetoSE || 'N/A';
     if (!agrupamento[projeto]) {
       agrupamento[projeto] = { 
+        total: 0,
         certificado: 0,
         emitidoNaoCertificado: 0,
         naoEmitido: 0,
         naoEncontrado: 0
       };
     }
+    
+    agrupamento[projeto].total++;
     
     // Classificar documento
     if (d.certificado) {
@@ -971,11 +1103,79 @@ function criarGraficoBarrasEmpilhadas(dados) {
     }
   });
   
-  const projetos = Object.keys(agrupamento);
+  // Ordenar projetos por total em ordem decrescente
+  const projetosOrdenados = Object.entries(agrupamento)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([projeto]) => projeto);
+  
+  const projetos = projetosOrdenados;
   const certificados = projetos.map(p => agrupamento[p].certificado);
   const emitidoNaoCertificado = projetos.map(p => agrupamento[p].emitidoNaoCertificado);
   const naoEmitidos = projetos.map(p => agrupamento[p].naoEmitido);
   const naoEncontrados = projetos.map(p => agrupamento[p].naoEncontrado);
+  
+  // Criar tabela de resumo
+  const resumoContainer = document.getElementById('statusProjetoResumo');
+  if (resumoContainer) {
+    const totalGeral = dados.length;
+    const totalCertificado = dados.filter(d => d.certificado).length;
+    const totalEmitidoNaoCert = dados.filter(d => d.emitido && !d.certificado).length;
+    const totalNaoEmitido = dados.filter(d => d.encontradoNoCSV && !d.emitido).length;
+    const totalNaoEncontrado = dados.filter(d => !d.encontradoNoCSV).length;
+    
+    const tabelaHTML = projetos.map(projeto => {
+      const p = agrupamento[projeto];
+      const taxaCertificacao = p.total > 0 ? ((p.certificado / p.total) * 100).toFixed(1) : 0;
+      return `
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #ddd; font-weight: 500;">${projeto}</td>
+          <td style="padding: 6px; text-align: right; border-bottom: 1px solid #ddd;">${p.total}</td>
+          <td style="padding: 6px; text-align: right; border-bottom: 1px solid #ddd; color: #007E7A; font-weight: 600;">${p.certificado}</td>
+          <td style="padding: 6px; text-align: right; border-bottom: 1px solid #ddd; color: #FF8C00;">${p.emitidoNaoCertificado}</td>
+          <td style="padding: 6px; text-align: right; border-bottom: 1px solid #ddd; color: #CC0000;">${p.naoEncontrado}</td>
+          <td style="padding: 6px; text-align: right; border-bottom: 1px solid #ddd;">${taxaCertificacao}%</td>
+        </tr>
+      `;
+    }).join('');
+    
+    const taxaCertGeral = totalGeral > 0 ? ((totalCertificado / totalGeral) * 100).toFixed(1) : 0;
+    
+    resumoContainer.innerHTML = `
+      <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; max-height: 400px; overflow-y: auto;">
+        <h4 style="margin: 0 0 12px 0; color: var(--color-primary); font-size: 0.95em;">Resumo por Projeto</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.8em;">
+          <thead>
+            <tr style="background: var(--color-primary); color: white;">
+              <th style="padding: 8px; text-align: left;">Projeto</th>
+              <th style="padding: 8px; text-align: right;">Total</th>
+              <th style="padding: 8px; text-align: right;">Cert.</th>
+              <th style="padding: 8px; text-align: right;">Emit.</th>
+              <th style="padding: 8px; text-align: right;">N/E</th>
+              <th style="padding: 8px; text-align: right;">Taxa</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tabelaHTML}
+          </tbody>
+          <tfoot>
+            <tr style="background: #e9ecef; font-weight: bold;">
+              <td style="padding: 8px;">TOTAL</td>
+              <td style="padding: 8px; text-align: right;">${totalGeral}</td>
+              <td style="padding: 8px; text-align: right; color: #007E7A;">${totalCertificado}</td>
+              <td style="padding: 8px; text-align: right; color: #FF8C00;">${totalEmitidoNaoCert}</td>
+              <td style="padding: 8px; text-align: right; color: #CC0000;">${totalNaoEncontrado}</td>
+              <td style="padding: 8px; text-align: right;">${taxaCertGeral}%</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div style="margin-top: 10px; font-size: 0.75em; color: #666;">
+          <span style="color: #007E7A;">●</span> Cert. = Certificados &nbsp;
+          <span style="color: #FF8C00;">●</span> Emit. = Emitido não certificado &nbsp;
+          <span style="color: #CC0000;">●</span> N/E = Não encontrado
+        </div>
+      </div>
+    `;
+  }
   
   graficosInstancias.chartBarrasEmpilhadas = new Chart(canvas, {
     type: 'bar',
@@ -1148,10 +1348,14 @@ function criarMapaCalorCertificacao(dados) {
  * @swagger
  * Cria gráfico de área: Acúmulo temporal
  * @param {Array} dados - Dados filtrados
+ * @param {string} tipoPeriodo - 'mensal' ou 'semanal'
  */
-function criarGraficoAreaAcumulo(dados) {
+function criarGraficoAreaAcumulo(dados, tipoPeriodo = null) {
   const canvas = document.getElementById('chartAreaAcumulo');
   if (!canvas) return;
+  
+  // Usar período da configuração se não especificado
+  const periodo = tipoPeriodo || configPeriodoGraficos.acumulo;
   
   if (graficosInstancias.chartAreaAcumulo) {
     graficosInstancias.chartAreaAcumulo.destroy();
@@ -1161,25 +1365,33 @@ function criarGraficoAreaAcumulo(dados) {
   const agrupamento = {};
   const periodosSet = new Set();
   
+  // Função para obter período
+  const obterPeriodo = (data) => {
+    if (periodo === 'semanal') {
+      return obterSemanaISO(data);
+    }
+    return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+  };
+  
   dados.forEach(d => {
     // Acúmulo Previsto (LD)
     if (d.dataPrevisto) {
-      const periodo = `${d.dataPrevisto.getFullYear()}-${String(d.dataPrevisto.getMonth() + 1).padStart(2, '0')}`;
-      periodosSet.add(periodo);
-      if (!agrupamento[periodo]) {
-        agrupamento[periodo] = { previsto: 0, realizado: 0 };
+      const periodoKey = obterPeriodo(d.dataPrevisto);
+      periodosSet.add(periodoKey);
+      if (!agrupamento[periodoKey]) {
+        agrupamento[periodoKey] = { previsto: 0, realizado: 0 };
       }
-      agrupamento[periodo].previsto++;
+      agrupamento[periodoKey].previsto++;
     }
     
     // Acúmulo Realizado (CSV DATA GR REC PRIMEMISSAO)
     if (d.dataEmissao) {
-      const periodo = `${d.dataEmissao.getFullYear()}-${String(d.dataEmissao.getMonth() + 1).padStart(2, '0')}`;
-      periodosSet.add(periodo);
-      if (!agrupamento[periodo]) {
-        agrupamento[periodo] = { previsto: 0, realizado: 0 };
+      const periodoKey = obterPeriodo(d.dataEmissao);
+      periodosSet.add(periodoKey);
+      if (!agrupamento[periodoKey]) {
+        agrupamento[periodoKey] = { previsto: 0, realizado: 0 };
       }
-      agrupamento[periodo].realizado++;
+      agrupamento[periodoKey].realizado++;
     }
   });
   
@@ -1192,9 +1404,9 @@ function criarGraficoAreaAcumulo(dados) {
   const previstosAcum = [];
   const realizadosAcum = [];
   
-  periodos.forEach(periodo => {
-    acumuloPrevisto += agrupamento[periodo]?.previsto || 0;
-    acumuloRealizado += agrupamento[periodo]?.realizado || 0;
+  periodos.forEach(p => {
+    acumuloPrevisto += agrupamento[p]?.previsto || 0;
+    acumuloRealizado += agrupamento[p]?.realizado || 0;
     
     previstosAcum.push(acumuloPrevisto);
     realizadosAcum.push(acumuloRealizado);
@@ -1239,7 +1451,7 @@ function criarGraficoAreaAcumulo(dados) {
         x: {
           title: {
             display: true,
-            text: 'Período'
+            text: periodo === 'semanal' ? 'Semana' : 'Período'
           }
         },
         y: {
@@ -1258,14 +1470,26 @@ function criarGraficoAreaAcumulo(dados) {
  * @swagger
  * Cria gráfico de área: Acúmulo de Certificação
  * @param {Array} dados - Dados filtrados
+ * @param {string} tipoPeriodo - 'mensal' ou 'semanal'
  */
-function criarGraficoAreaAcumuloCertificacao(dados) {
+function criarGraficoAreaAcumuloCertificacao(dados, tipoPeriodo = null) {
   const canvas = document.getElementById('chartAreaAcumuloCertificacao');
   if (!canvas) return;
+  
+  // Usar período da configuração se não especificado
+  const periodo = tipoPeriodo || configPeriodoGraficos.acumuloCert;
   
   if (graficosInstancias.chartAreaAcumuloCertificacao) {
     graficosInstancias.chartAreaAcumuloCertificacao.destroy();
   }
+  
+  // Função para obter período
+  const obterPeriodo = (data) => {
+    if (periodo === 'semanal') {
+      return obterSemanaISO(data);
+    }
+    return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+  };
   
   // Agrupar por período usando dataPrevistoCertificacao (Previsto LD + 14) e dataCertificacao (CSV PRIMCERTIFICACAO)
   const agrupamento = {};
@@ -1274,22 +1498,22 @@ function criarGraficoAreaAcumuloCertificacao(dados) {
   dados.forEach(d => {
     // Certificação Prevista (Previsto LD + 14 dias)
     if (d.dataPrevistoCertificacao) {
-      const periodo = `${d.dataPrevistoCertificacao.getFullYear()}-${String(d.dataPrevistoCertificacao.getMonth() + 1).padStart(2, '0')}`;
-      periodosSet.add(periodo);
-      if (!agrupamento[periodo]) {
-        agrupamento[periodo] = { previsto: 0, realizado: 0 };
+      const periodoKey = obterPeriodo(d.dataPrevistoCertificacao);
+      periodosSet.add(periodoKey);
+      if (!agrupamento[periodoKey]) {
+        agrupamento[periodoKey] = { previsto: 0, realizado: 0 };
       }
-      agrupamento[periodo].previsto++;
+      agrupamento[periodoKey].previsto++;
     }
     
     // Acúmulo Realizado (CSV DATA GR REC PRIMCERTIFICACAO)
     if (d.dataCertificacao) {
-      const periodo = `${d.dataCertificacao.getFullYear()}-${String(d.dataCertificacao.getMonth() + 1).padStart(2, '0')}`;
-      periodosSet.add(periodo);
-      if (!agrupamento[periodo]) {
-        agrupamento[periodo] = { previsto: 0, realizado: 0 };
+      const periodoKey = obterPeriodo(d.dataCertificacao);
+      periodosSet.add(periodoKey);
+      if (!agrupamento[periodoKey]) {
+        agrupamento[periodoKey] = { previsto: 0, realizado: 0 };
       }
-      agrupamento[periodo].realizado++;
+      agrupamento[periodoKey].realizado++;
     }
   });
   
@@ -1302,9 +1526,9 @@ function criarGraficoAreaAcumuloCertificacao(dados) {
   const previstosAcum = [];
   const realizadosAcum = [];
   
-  periodos.forEach(periodo => {
-    acumuloPrevisto += agrupamento[periodo]?.previsto || 0;
-    acumuloRealizado += agrupamento[periodo]?.realizado || 0;
+  periodos.forEach(p => {
+    acumuloPrevisto += agrupamento[p]?.previsto || 0;
+    acumuloRealizado += agrupamento[p]?.realizado || 0;
     
     previstosAcum.push(acumuloPrevisto);
     realizadosAcum.push(acumuloRealizado);
@@ -1349,7 +1573,7 @@ function criarGraficoAreaAcumuloCertificacao(dados) {
         x: {
           title: {
             display: true,
-            text: 'Período'
+            text: periodo === 'semanal' ? 'Semana' : 'Período'
           }
         },
         y: {
