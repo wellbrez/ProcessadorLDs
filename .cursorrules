@@ -196,6 +196,21 @@ js/
 - **Solução**: Remover funcionalidade não essencial, manter apenas o necessário
 - **Lição**: "Perfeito é o inimigo do bom" - funcionalidade simples e funcional é melhor que complexa e quebrada
 
+### 7. Matching de Dados em Arquivos CSV Grandes (Milhões de Linhas)
+
+- **Problema**: Vales das LDs não eram encontrados no CSV gerencial mesmo existindo, especialmente em arquivos muito grandes
+- **Causa Raiz**: Normalização insuficiente que não tratava:
+  - Caracteres invisíveis: BOM (`\uFEFF`), zero-width chars (`\u200B`, `\u200C`, `\u200D`)
+  - Non-breaking spaces (`\u00A0`) que não são capturados por `\s`
+  - Diferentes tipos de hífen: en-dash (`–`), em-dash (`—`), non-breaking hyphen (`‑`), minus sign (`−`)
+  - Variações de encoding entre fontes (UTF-8 vs Latin-1)
+  - Variações de nomes de colunas (ex: "Número" vs "Numero")
+- **Solução**: 
+  1. Normalização robusta: Remover BOM, zero-width chars, caracteres de controle; padronizar todos os tipos de hífen/dash; tratar non-breaking spaces
+  2. Mapeamento inteligente de colunas: Mapear nomes de colunas usando normalização (remove acentos, case-insensitive) para encontrar correspondência mesmo com encoding diferente
+  3. Diagnóstico: Log de vales não encontrados para facilitar investigação
+- **Lição**: Em operações de matching entre fontes diferentes, sempre considerar variações de encoding e caracteres invisíveis. Quanto maior o arquivo, maior a probabilidade de inconsistências.
+
 ## Padrões de Código
 
 ### JavaScript

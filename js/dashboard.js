@@ -106,7 +106,13 @@ function prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamen
           
           // Buscar linha com PRIMEMISSAO para data de emissão (prevalece CSV)
           let dataEmissao = null;
-          if (posProcessamento.linhasCSV && Array.isArray(posProcessamento.linhasCSV)) {
+          
+          // Primeiro tentar usar campos pré-calculados (formato v2.0 otimizado)
+          if (posProcessamento.dataEmissaoCSV) {
+            dataEmissao = converterData(posProcessamento.dataEmissaoCSV);
+          }
+          // Fallback: buscar em linhasCSV (formato original)
+          else if (posProcessamento.linhasCSV && Array.isArray(posProcessamento.linhasCSV)) {
             const linhaPrimEmissao = posProcessamento.linhasCSV.find(l => {
               const emissao = l['EMISSAO'] || '';
               return String(emissao).trim().toUpperCase() === 'PRIMEMISSAO';
@@ -123,7 +129,13 @@ function prepararDadosMesclados(resultadosProcessamento, resultadoPosProcessamen
           
           // Buscar linha com PRIMCERTIFICACAO para data de certificação
           let dataCertificacao = null;
-          if (posProcessamento.linhasCSV && Array.isArray(posProcessamento.linhasCSV)) {
+          
+          // Primeiro tentar usar campos pré-calculados (formato v2.0 otimizado)
+          if (posProcessamento.dataCertificacaoCSV) {
+            dataCertificacao = converterData(posProcessamento.dataCertificacaoCSV);
+          }
+          // Fallback: buscar em linhasCSV (formato original)
+          else if (posProcessamento.linhasCSV && Array.isArray(posProcessamento.linhasCSV)) {
             const linhaPrimCertificacao = posProcessamento.linhasCSV.find(l => {
               return l['PRIMCERTIFICACAO'] === true;
             });

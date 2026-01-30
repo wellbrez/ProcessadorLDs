@@ -9,6 +9,8 @@
 /**
  * @swagger
  * Normaliza número do vale para comparação
+ * Remove caracteres invisíveis, padroniza separadores e garante consistência
+ * entre diferentes fontes (LDs e CSV gerencial)
  * @param {string|number} noVale - Número do vale
  * @returns {string} Número do vale normalizado
  */
@@ -18,19 +20,43 @@ function normalizarNumeroVale(noVale) {
   }
   
   // Converter para string se necessário
-  const noValeStr = String(noVale).trim();
+  let noValeStr = String(noVale);
+  
+  // IMPORTANTE: Remover BOM (Byte Order Mark) e caracteres invisíveis ANTES do trim
+  // BOM UTF-8: \uFEFF, BOM UTF-16: \uFFFE
+  // Zero-width chars: \u200B (zero-width space), \u200C (zero-width non-joiner), \u200D (zero-width joiner)
+  // Soft hyphen: \u00AD
+  noValeStr = noValeStr.replace(/[\uFEFF\uFFFE\u200B\u200C\u200D\u00AD]/g, '');
+  
+  // Remover caracteres de controle (exceto espaços normais)
+  noValeStr = noValeStr.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  
+  // Trim normal
+  noValeStr = noValeStr.trim();
+  
   if (!noValeStr) {
     return '';
   }
   
-  // Remove espaços e converte para maiúsculas
+  // Converte para maiúsculas
   let normalizado = noValeStr.toUpperCase();
   
-  // Remove espaços extras entre caracteres
+  // IMPORTANTE: Substituir non-breaking spaces (\u00A0) por espaço normal, depois remover
+  normalizado = normalizado.replace(/\u00A0/g, ' ');
+  
+  // Remove TODOS os tipos de espaços (incluindo tabs, etc)
   normalizado = normalizado.replace(/\s+/g, '');
   
-  // Padroniza separadores (aceita - ou _)
-  normalizado = normalizado.replace(/[_\s]/g, '-');
+  // IMPORTANTE: Padronizar TODOS os tipos de hífen/dash para hífen ASCII normal (-)
+  // En-dash: \u2013, Em-dash: \u2014, Hyphen: \u2010, Non-breaking hyphen: \u2011
+  // Figure dash: \u2012, Horizontal bar: \u2015, Minus sign: \u2212
+  normalizado = normalizado.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u002D_]/g, '-');
+  
+  // Remover hífens duplicados
+  normalizado = normalizado.replace(/-+/g, '-');
+  
+  // Remover hífens no início e fim
+  normalizado = normalizado.replace(/^-+|-+$/g, '');
   
   return normalizado;
 }
@@ -460,29 +486,123 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
     let valesEncontrados = 0;
     const totalValesParaBuscar = valesParaBuscar.size;
     
+    // Cache para mapeamento de nomes de colunas (resolve problemas de encoding)
+    let mapaColunasCache = null;
+    
+    /**
+     * @swagger
+     * Busca valor de uma coluna considerando variações de encoding e nomes
+     * @param {Object} linha - Linha do CSV
+     * @param {Array<string>} nomesAlternativos - Array de nomes possíveis para a coluna
+     * @returns {*} Valor encontrado ou null
+     */
+    function buscarColuna(linha, nomesAlternativos) {
+      for (const nome of nomesAlternativos) {
+        if (linha[nome] !== undefined && linha[nome] !== null && String(linha[nome]).trim() !== '') {
+          return linha[nome];
+        }
+      }
+      return null;
+    }
+    
+    /**
+     * @swagger
+     * Mapeia nomes de colunas do cabeçalho real para nomes esperados
+     * Resolve problemas de encoding (UTF-8 vs Latin-1) e variações de nomes
+     * @param {Array<string>} cabecalhoReal - Cabeçalho real do CSV
+     * @returns {Object} Mapa de coluna esperada → coluna real
+     */
+    function mapearColunas(cabecalhoReal) {
+      if (!cabecalhoReal || !Array.isArray(cabecalhoReal)) return {};
+      
+      const mapa = {};
+      
+      // Definir variações de nomes para cada coluna esperada
+      // IMPORTANTE: Incluir variações com encoding corrompido (Latin-1 lido como UTF-8)
+      // Ex: "Número" vira "N?mero" ou "NÃºmero" quando encoding está errado
+      const variacoes = {
+        'Número Vale': ['Número Vale', 'Numero Vale', 'NÚMERO VALE', 'NUMERO VALE', 'Nº Vale', 'No Vale', 'NO VALE', 
+                        'N?mero Vale', 'N�mero Vale', 'NÃºmero Vale', 'Nъmero Vale'], // Variações de encoding corrompido
+        'Num. Vale Antigo': ['Num. Vale Antigo', 'Num Vale Antigo', 'NUM. VALE ANTIGO', 'NUM VALE ANTIGO', 'Numero Vale Antigo'],
+        'Data GR Rec': ['Data GR Rec', 'Data GR REC', 'Data GR Rec.', 'DATA GR REC', 'DataGRRec'],
+        'Final. Devol': ['Final. Devol', 'Final Devol', 'Finalidade de devolução', 'FINAL. DEVOL', 'Finalidade Devolução',
+                         'Final. Devol', 'Finalidade de devolu??o', 'Finalidade de devoluÃ§Ã£o'], // Encoding corrompido
+        'Revisão': ['Revisão', 'Revisao', 'REVISÃO', 'REVISAO', 'Rev', 'REV',
+                    'Revis?o', 'Revis�o', 'RevisÃ£o'], // Encoding corrompido
+        'Tp. Emissão': ['Tp. Emissão', 'Tp Emissão', 'Tp. Emissao', 'Tp Emissao', 'Tipo Emissão', 'Tipo Emissao', 'TP. EMISSÃO',
+                        'Tp. Emiss?o', 'Tp. Emiss�o', 'Tp. EmissÃ£o'], // Encoding corrompido
+        'Projeto/SE': ['Projeto/SE', 'Projeto / SE', 'Projeto SE', 'PROJETO/SE', 'ProjetoSE'],
+        'Empresa': ['Empresa', 'EMPRESA'],
+        'Title': ['Title', 'Título', 'TITLE', 'TITULO', 'Titulo', 'T?tulo', 'TÃ­tulo'],
+        'GR Recebimento': ['GR Recebimento', 'GR Receb.', 'GR RECEBIMENTO', 'GRRecebimento'],
+        'Status': ['Status', 'STATUS'],
+        'Fase': ['Fase', 'FASE'],
+        'Formato': ['Formato', 'Formato de Arquivo', 'FORMATO'],
+        'Responsável': ['Responsável', 'Responsavel', 'RESPONSÁVEL', 'RESPONSAVEL',
+                        'Respons?vel', 'Respons�vel', 'ResponsÃ¡vel'] // Encoding corrompido
+      };
+      
+      // Normaliza string para comparação (remove acentos e caracteres especiais)
+      function normalizarParaComparacao(str) {
+        if (!str) return '';
+        return str
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+          .replace(/[\uFEFF\uFFFE\u200B\u200C\u200D]/g, '') // Remove BOM e zero-width
+          .replace(/[^a-zA-Z0-9]/g, '') // Remove caracteres especiais
+          .toUpperCase();
+      }
+      
+      // Para cada coluna esperada, encontrar a correspondente no cabeçalho real
+      for (const [colunaEsperada, nomesPossiveis] of Object.entries(variacoes)) {
+        for (const colunaReal of cabecalhoReal) {
+          const colunaRealNorm = normalizarParaComparacao(colunaReal);
+          for (const nomePossivel of nomesPossiveis) {
+            const nomePossivelNorm = normalizarParaComparacao(nomePossivel);
+            if (colunaRealNorm === nomePossivelNorm) {
+              mapa[colunaEsperada] = colunaReal;
+              break;
+            }
+          }
+          if (mapa[colunaEsperada]) break;
+        }
+      }
+      
+      return mapa;
+    }
+    
     // Função para extrair apenas campos necessários (economiza memória)
+    // IMPORTANTE: Incluir variações de encoding corrompido (Latin-1/ISO-8859-1 lido como UTF-8)
     function extrairCamposNecessarios(linha) {
-      // Extrair número do vale usando mesma lógica de busca
-      let noVale = linha['Número Vale'];
+      // Usar cache de mapeamento de colunas se disponível
+      const m = mapaColunasCache || {};
+      
+      // Extrair número do vale usando mesma lógica de busca (com fallback para encoding corrompido)
+      let noVale = linha[m['Número Vale']] || linha['Número Vale'] || linha['Numero Vale'] ||
+                   linha['N?mero Vale'] || linha['N�mero Vale'] || linha['NÃºmero Vale'];
       if (!noVale || String(noVale).trim() === '') {
-        noVale = linha['Num. Vale Antigo'];
+        noVale = linha[m['Num. Vale Antigo']] || linha['Num. Vale Antigo'] || linha['Num Vale Antigo'];
       }
       
       return {
         'Número Vale': noVale || null,
-        'Num. Vale Antigo': linha['Num. Vale Antigo'] || null,
-        'Data GR Rec': linha['Data GR Rec'] || linha['Data GR REC'] || linha['Data GR Rec.'] || null,
-        'Final. Devol': linha['Final. Devol'] || linha['Finalidade de devolução'] || null,
-        'Revisão': linha['Revisão'] || null,
-        'Tp. Emissão': linha['Tp. Emissão'] || linha['Tipo Emissão'] || linha['Tipo Emissao'] || null,
-        'Projeto/SE': linha['Projeto/SE'] || linha['Projeto / SE'] || null,
-        'Empresa': linha['Empresa'] || null,
-        'Title': linha['Title'] || linha['Título'] || null,
-        'GR Recebimento': linha['GR Recebimento'] || linha['GR Receb.'] || null,
-        'Status': linha['Status'] || null,
-        'Fase': linha['Fase'] || null,
-        'Formato': linha['Formato'] || linha['Formato de Arquivo'] || null,
-        'Responsável': linha['Responsável'] || linha['Responsavel'] || null
+        'Num. Vale Antigo': linha[m['Num. Vale Antigo']] || linha['Num. Vale Antigo'] || linha['Num Vale Antigo'] || null,
+        'Data GR Rec': linha[m['Data GR Rec']] || linha['Data GR Rec'] || linha['Data GR REC'] || linha['Data GR Rec.'] || null,
+        'Final. Devol': linha[m['Final. Devol']] || linha['Final. Devol'] || linha['Finalidade de devolução'] || 
+                        linha['Final. Devol'] || linha['Finalidade de devolu??o'] || null,
+        'Revisão': linha[m['Revisão']] || linha['Revisão'] || linha['Revisao'] || 
+                   linha['Revis?o'] || linha['Revis�o'] || linha['RevisÃ£o'] || null,
+        'Tp. Emissão': linha[m['Tp. Emissão']] || linha['Tp. Emissão'] || linha['Tipo Emissão'] || linha['Tipo Emissao'] ||
+                       linha['Tp. Emiss?o'] || linha['Tp. Emiss�o'] || linha['Tp. EmissÃ£o'] || null,
+        'Projeto/SE': linha[m['Projeto/SE']] || linha['Projeto/SE'] || linha['Projeto / SE'] || null,
+        'Empresa': linha[m['Empresa']] || linha['Empresa'] || null,
+        'Title': linha[m['Title']] || linha['Title'] || linha['Título'] || linha['T?tulo'] || linha['TÃ­tulo'] || null,
+        'GR Recebimento': linha[m['GR Recebimento']] || linha['GR Recebimento'] || linha['GR Receb.'] || null,
+        'Status': linha[m['Status']] || linha['Status'] || null,
+        'Fase': linha[m['Fase']] || linha['Fase'] || null,
+        'Formato': linha[m['Formato']] || linha['Formato'] || linha['Formato de Arquivo'] || null,
+        'Responsável': linha[m['Responsável']] || linha['Responsável'] || linha['Responsavel'] ||
+                       linha['Respons?vel'] || linha['Respons�vel'] || linha['ResponsÃ¡vel'] || null
       };
     }
     
@@ -499,11 +619,40 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
       dynamicTyping: false, // Não converter tipos automaticamente (economiza memória)
       chunkSize: chunkSize, // Chunks menores para arquivos grandes
       step: undefined, // Não usar step, apenas chunk
+      // IMPORTANTE: Detectar delimitador automaticamente (CSV brasileiro usa ; ao invés de ,)
+      delimiter: '', // String vazia = auto-detect (PapaParse detecta automaticamente)
+      // Não forçar encoding - deixar o browser/PapaParse detectar automaticamente
+      // Alguns CSVs brasileiros usam Latin-1/ISO-8859-1, outros UTF-8
       chunk: function(results, parser) {
         try {
           // Processar chunk
           if (!cabecalho && results.meta.fields) {
             cabecalho = results.meta.fields;
+            // Criar cache de mapeamento de colunas baseado no cabeçalho real
+            // Isso resolve problemas de encoding (UTF-8 vs Latin-1) e variações de nomes
+            mapaColunasCache = mapearColunas(cabecalho);
+            
+            // Log para diagnóstico - mostra delimitador detectado e colunas mapeadas
+            console.log('📊 CSV Gerencial - Informações de carregamento:');
+            console.log('  Delimitador detectado:', results.meta.delimiter || 'não detectado');
+            console.log('  Total de colunas:', cabecalho.length);
+            console.log('  Primeiras colunas (para verificar encoding):', cabecalho.slice(0, 5));
+            
+            // Verificar se coluna "Número Vale" foi encontrada (crítico para o match)
+            const colunaNumeroValeEncontrada = mapaColunasCache['Número Vale'] || 
+              cabecalho.find(c => c && (
+                c.includes('mero Vale') || c.includes('Numero Vale') || c.includes('NUMERO VALE')
+              ));
+            
+            if (colunaNumeroValeEncontrada) {
+              console.log('  ✅ Coluna "Número Vale" encontrada como:', colunaNumeroValeEncontrada);
+            } else {
+              console.warn('  ⚠️ Coluna "Número Vale" NÃO encontrada! Tentando fallback para "Num. Vale Antigo"');
+            }
+            
+            if (Object.keys(mapaColunasCache).length > 0) {
+              console.log('  Mapeamento de colunas:', mapaColunasCache);
+            }
           }
           
         // Processar linhas do chunk de forma otimizada
@@ -513,19 +662,29 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
         // Incrementar contador de linhas ANTES de processar (para progresso mais preciso)
         linhaAtual += numLinhas;
         
+        // Usar cache de mapeamento de colunas
+        const m = mapaColunasCache || {};
+        const colNumeroVale = m['Número Vale'] || 'Número Vale';
+        const colNumValeAntigo = m['Num. Vale Antigo'] || 'Num. Vale Antigo';
+        
         // Otimização: processar todas as linhas do chunk de uma vez
         // Como estamos filtrando, a maioria será ignorada rapidamente
         for (let i = 0; i < numLinhas; i++) {
           const linha = linhasChunk[i];
           if (!linha) continue;
           
-          // Tentar encontrar número do vale - usar apenas 'Número Vale' e 'Num. Vale Antigo'
-          let noVale = linha['Número Vale'];
+          // Tentar encontrar número do vale - usar coluna mapeada ou fallbacks
+          // IMPORTANTE: Incluir variações de encoding corrompido (Latin-1 lido como UTF-8)
+          // O CSV brasileiro pode usar ; como separador e Latin-1 como encoding
+          let noVale = linha[colNumeroVale] || 
+                       linha['Número Vale'] || linha['Numero Vale'] || linha['NÚMERO VALE'] ||
+                       linha['N?mero Vale'] || linha['N�mero Vale'] || linha['NÃºmero Vale']; // Encoding corrompido
           if (!noVale || String(noVale).trim() === '') {
-            noVale = linha['Num. Vale Antigo'];
+            noVale = linha[colNumValeAntigo] || 
+                     linha['Num. Vale Antigo'] || linha['Num Vale Antigo'] || linha['NUM. VALE ANTIGO'];
           }
           
-          // Normalizar o vale para comparação
+          // Normalizar o vale para comparação (normalização robusta com tratamento de caracteres especiais)
           const valeNormalizado = noVale ? normalizarNumeroVale(noVale) : '';
           
           // FILTRO PRINCIPAL: Só processar se o vale está na lista de vales das LDs
@@ -547,10 +706,10 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
             }
           }
         }
-          
-          // Limpar referências do chunk processado para liberar memória imediatamente
-          linhasChunk.length = 0; // Limpar array
-          results.data = null;
+        
+        // Limpar referências do chunk processado para liberar memória imediatamente
+        linhasChunk.length = 0; // Limpar array
+        results.data = null;
           
           // Atualizar progresso de forma balanceada: frequente o suficiente para feedback visual,
           // mas não tanto a ponto de bloquear o processamento
@@ -618,6 +777,23 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
           callbackProgresso(100, textoFinal);
         }
         
+        // Identificar vales que foram buscados mas não encontrados (para diagnóstico)
+        const valesNaoEncontrados = [];
+        if (valesEncontrados < totalValesParaBuscar) {
+          valesParaBuscar.forEach(valeNorm => {
+            if (!indiceCSV.has(valeNorm)) {
+              valesNaoEncontrados.push(valeNorm);
+            }
+          });
+          
+          // Log para diagnóstico (limitado aos primeiros 20)
+          if (valesNaoEncontrados.length > 0) {
+            console.warn(`⚠️ ${valesNaoEncontrados.length} vales das LDs não foram encontrados no CSV:`);
+            console.warn('Primeiros 20 vales não encontrados:', valesNaoEncontrados.slice(0, 20));
+            console.warn('Para diagnóstico: verifique se esses vales existem no CSV com formatação diferente.');
+          }
+        }
+        
         resolve({
           indice: indiceCSV,
           cabecalho: cabecalho || (results && results.meta && results.meta.fields) || [],
@@ -625,7 +801,8 @@ async function carregarCSVGerencial(arquivo, valesParaBuscar, callbackProgresso)
           totalValesUnicos: indiceCSV.size,
           linhasProcessadas: linhasProcessadas,
           valesEncontrados: valesEncontrados,
-          totalValesParaBuscar: totalValesParaBuscar
+          totalValesParaBuscar: totalValesParaBuscar,
+          valesNaoEncontrados: valesNaoEncontrados // Para diagnóstico
         });
       },
       error: function(erro) {

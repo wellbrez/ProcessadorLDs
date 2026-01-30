@@ -68,6 +68,28 @@
     </header>
     
     <main>
+      <!-- Seção de Dados Salvos (aparece apenas se houver dados) -->
+      <section class="section" id="sectionDadosSalvosInicio" style="display: none;">
+        <h2>💾 Dados Salvos Disponíveis</h2>
+        <div class="card" style="padding: 20px; background: linear-gradient(135deg, var(--color-primary-lightest) 0%, #f0f9f9 100%); border-left: 4px solid var(--color-primary); border-radius: 8px;">
+          <div id="dadosSalvosInfoInicio" style="margin-bottom: 15px; font-size: 0.95em; color: var(--color-text);"></div>
+          <div class="buttons-group" style="flex-wrap: wrap; gap: 10px;">
+            <button class="btn btn-primary" id="btnCarregarDadosInicio" style="display: flex; align-items: center; gap: 8px;">
+              <span>📥</span> Carregar Dados Salvos
+            </button>
+            <button class="btn btn-secondary" id="btnCarregarLDEspecifica" style="display: flex; align-items: center; gap: 8px;">
+              <span>📋</span> Carregar LD Específica
+            </button>
+            <button class="btn btn-danger" id="btnLimparDadosInicio" style="display: flex; align-items: center; gap: 8px;">
+              <span>🗑️</span> Limpar Dados
+            </button>
+          </div>
+          <p style="margin-top: 15px; font-size: 0.85em; color: var(--color-text-light);">
+            💡 Você pode carregar os dados salvos anteriormente ou processar novos arquivos abaixo.
+          </p>
+        </div>
+      </section>
+
       <!-- Seção de Upload -->
       <section class="section">
         <h2>Selecionar Arquivos</h2>

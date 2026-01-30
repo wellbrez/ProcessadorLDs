@@ -323,6 +323,35 @@ function processarPosProcessamento(dadosLDs, indiceCSV, callbackProgresso)
 - Armazenamento mínimo: Apenas campos necessários por linha (14 campos)
 - Múltiplas linhas por vale: Armazena todas as linhas de cada vale (necessário para ordenação e cálculos)
 
+**Normalização Robusta de Números de Vale:**
+A função `normalizarNumeroVale()` foi otimizada para garantir matching correto mesmo com variações de encoding e caracteres especiais:
+- Remove BOM (Byte Order Mark): `\uFEFF`, `\uFFFE`
+- Remove caracteres zero-width: `\u200B`, `\u200C`, `\u200D`
+- Remove soft hyphen: `\u00AD`
+- Remove caracteres de controle
+- Substitui non-breaking spaces (`\u00A0`) por espaço normal
+- Padroniza todos os tipos de hífen/dash para hífen ASCII: en-dash, em-dash, hyphen, non-breaking hyphen, figure dash, horizontal bar, minus sign
+- Remove hífens duplicados e hífens no início/fim
+
+**Mapeamento Inteligente de Colunas do CSV:**
+O sistema mapeia automaticamente nomes de colunas do CSV para nomes esperados, resolvendo problemas de:
+- Encoding diferente (UTF-8 vs Latin-1/ISO-8859-1)
+- Variações de acentuação (ex: "Número" vs "Numero" vs "N?mero")
+- Variações de maiúsculas/minúsculas
+- Variações de nomenclatura (ex: "Num. Vale Antigo" vs "Numero Vale Antigo")
+- Encoding corrompido (ex: "Revisão" aparecendo como "Revis?o" ou "RevisÃ£o")
+
+**Compatibilidade com CSV Brasileiro:**
+- **Delimitador automático**: Detecta automaticamente se o CSV usa `;` (padrão brasileiro) ou `,`
+- **Encoding flexível**: Suporta Latin-1/ISO-8859-1, UTF-8 e variações
+- **Colunas com acento corrompido**: Mapeia automaticamente colunas como "N?mero Vale" para "Número Vale"
+
+**Diagnóstico de Vales Não Encontrados:**
+Ao final do carregamento do CSV, o sistema:
+- Identifica vales buscados que não foram encontrados
+- Exibe log de diagnóstico no console do navegador (F12)
+- Retorna lista de `valesNaoEncontrados` para análise
+
 **Campos Extraídos do CSV:**
 - Campos para identificação: 'Número Vale', 'Num. Vale Antigo'
 - Campos para cálculos: 'Revisão', 'Tp. Emissão', 'Final. Devol'
@@ -762,24 +791,119 @@ O modal de detalhes de cada LD foi expandido para incluir informações do pós-
 
 ### LocalStorage
 - **Uso**: Armazenamento de dados processados no navegador
-- **Estrutura**: JSON serializado com dados completos do processamento
+- **Estrutura**: JSON serializado com dados otimizados (formato v2.0)
 - **Limite**: ~5-10MB (dependendo do navegador)
 - **Validação**: Sistema verifica tamanho e alerta se necessário
 - **Funcionalidades**:
-  - Salvamento automático após processamento
+  - Salvamento automático após processamento (dados otimizados)
   - Carregamento manual de dados salvos
-  - Limpeza de dados salvos
+  - **Salvamento/carregamento por LD específica** (novo)
+  - Limpeza de dados salvos (parcial ou total)
   - Exibição de informações sobre dados salvos
+  - **Metadados do CSV persistidos** (novo)
 
-### Dados Persistidos
+### Otimização de Dados (v2.0)
+
+Para reduzir o tamanho dos dados salvos e evitar problemas de tamanho no localStorage:
+
+1. **Remoção de `linhasCSV` completo**: As linhas do CSV para cada vale são removidas após extração dos dados necessários
+2. **Campos pré-calculados**: `dataEmissaoCSV` e `dataCertificacaoCSV` substituem a busca em `linhasCSV`
+3. **Campos filtrados**: Apenas os campos necessários para gráficos são salvos de cada linha da LD
+
+### Dados Persistidos (Formato v2.0)
 ```javascript
 {
-  dataProcessamento: string, // ISO timestamp
-  resultadoPosProcessamento: Object,
-  hashCSV: string,
-  resultadosProcessamento: Array,
-  resultadoValidacao: Object
+  versao: '2.0',                    // Versão do formato de dados
+  dataProcessamento: string,         // ISO timestamp
+  ldEspecifica: string|null,         // Nome da LD se salvamento parcial
+  infoCSV: {                         // Metadados do CSV (novo)
+    nomeArquivo: string,             // Nome do arquivo CSV utilizado
+    dataModificacao: string,         // Data de modificação do arquivo CSV
+    dataCarregamento: string,        // Quando o CSV foi carregado
+    totalLinhasCSV: number,          // Total de linhas processadas
+    valesEncontradosNoCSV: number    // Vales encontrados no CSV
+  },
+  resultadoPosProcessamento: {
+    totalLinhasProcessadas: number,
+    valesEncontrados: number,
+    valesNaoEncontrados: number,
+    valesEmitidos: number,
+    valesNaoEmitidos: number,
+    discrepânciasData: number,
+    resultados: [                    // Array otimizado
+      {
+        noVale: string,
+        arquivo: string,
+        ld: string,
+        revisao: string,
+        encontradoNoCSV: boolean,
+        emitido: boolean,
+        dadosCSV: Object,            // Dados extraídos do CSV
+        comparacaoData: Object,
+        realizado2Original: string,
+        dataEmissaoCSV: string,      // Campo pré-calculado (novo)
+        dataCertificacaoCSV: string  // Campo pré-calculado (novo)
+        // linhasCSV REMOVIDO para otimização
+      }
+    ]
+  },
+  resultadosProcessamento: [         // Array otimizado
+    {
+      nomeArquivo: string,
+      ld: string,
+      revisao: string,
+      dados: [                       // Campos filtrados
+        {
+          'NO VALE': string,
+          'Disciplina': string,
+          'FORMATO': string,
+          'DataPrevisto': Date,
+          'PREVISTO 2': string,
+          'REALIZADO 2': string
+        }
+      ],
+      totalLinhas: number,
+      linhasProcessadas: number
+    }
+  ],
+  resultadoValidacao: Object|null
 }
+```
+
+### Salvamento por LD Específica
+
+O sistema permite salvar e carregar dados de LDs individuais:
+
+- **Chave de armazenamento**: `posProcessamento_LD_{nome_ld}` para LDs individuais
+- **Chave consolidada**: `posProcessamento_dados` para todos os dados
+- **Vantagens**: 
+  - Reduz tamanho de cada salvamento
+  - Permite carregar apenas LDs necessárias
+  - Evita problemas de quota do localStorage
+
+### Funções de Gerenciamento
+
+```javascript
+// Salvar todas as LDs (consolidado)
+salvarDadosPosProcessamento()
+
+// Salvar LD específica
+salvarDadosPosProcessamento('LD_8001PZ-F-11047')
+
+// Carregar dados consolidados
+carregarDadosPosProcessamento()
+
+// Carregar LD específica
+carregarDadosPosProcessamento('LD_8001PZ-F-11047')
+
+// Listar LDs salvas individualmente
+listarLDsSalvas() // Retorna array de objetos com informações
+
+// Limpar dados consolidados
+limparDadosSalvos()
+
+// Limpar LD específica
+limparDadosSalvos('LD_8001PZ-F-11047')
 ```
 
 ## Extensibilidade

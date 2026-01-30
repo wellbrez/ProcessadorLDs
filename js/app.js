@@ -1150,6 +1150,18 @@ async function handleCSVSelect(e) {
     
     indiceCSVGerencial = resultado.indice;
     
+    // Salvar metadados do CSV para persistência
+    metadadosCSV = {
+      nomeArquivo: arquivo.name,
+      dataModificacao: arquivo.lastModified ? new Date(arquivo.lastModified).toISOString() : null,
+      dataCarregamento: new Date().toISOString(),
+      totalLinhas: resultado.totalLinhas,
+      valesEncontrados: resultado.valesEncontrados,
+      tamanhoBytes: arquivo.size
+    };
+    
+    console.log('📋 Metadados do CSV salvos:', metadadosCSV);
+    
     // Atualizar interface com informações detalhadas
     const infoText = resultado.valesEncontrados === resultado.totalValesParaBuscar
       ? `CSV carregado: ${resultado.totalLinhas.toLocaleString()} linhas lidas, ${resultado.linhasProcessadas.toLocaleString()} filtradas, ${resultado.valesEncontrados.toLocaleString()}/${resultado.totalValesParaBuscar.toLocaleString()} vales encontrados (100%)`
@@ -1640,11 +1652,140 @@ function limparFiltrosDashboard() {
   aplicarFiltrosDashboard();
 }
 
+// Variável global para armazenar metadados do CSV
+let metadadosCSV = null;
+
+/**
+ * @swagger
+ * Otimiza dados do pós-processamento para salvamento
+ * Remove dados redundantes e extrai apenas o necessário para regenerar gráficos
+ * @param {Object} posProcessamento - Resultado do pós-processamento original
+ * @returns {Object} Dados otimizados para salvamento
+ */
+function otimizarDadosPosProcessamento(posProcessamento) {
+  if (!posProcessamento || !posProcessamento.resultados) {
+    return posProcessamento;
+  }
+  
+  // Criar cópia otimizada dos resultados
+  const resultadosOtimizados = posProcessamento.resultados.map(resultado => {
+    // Extrair apenas datas necessárias de linhasCSV
+    let dataEmissao = null;
+    let dataCertificacao = null;
+    
+    if (resultado.linhasCSV && Array.isArray(resultado.linhasCSV)) {
+      // Encontrar linha com PRIMEMISSAO para data de emissão
+      const linhaPrimEmissao = resultado.linhasCSV.find(l => 
+        String(l['EMISSAO'] || '').trim().toUpperCase() === 'PRIMEMISSAO'
+      );
+      if (linhaPrimEmissao) {
+        dataEmissao = linhaPrimEmissao['Data GR Rec'] || null;
+      }
+      
+      // Encontrar linha com PRIMCERTIFICACAO para data de certificação
+      const linhaPrimCertificacao = resultado.linhasCSV.find(l => 
+        l['PRIMCERTIFICACAO'] === true
+      );
+      if (linhaPrimCertificacao) {
+        dataCertificacao = linhaPrimCertificacao['Data GR Rec'] || null;
+      }
+    }
+    
+    // Retornar objeto otimizado SEM linhasCSV completo
+    return {
+      noVale: resultado.noVale,
+      arquivo: resultado.arquivo,
+      ld: resultado.ld,
+      revisao: resultado.revisao,
+      encontradoNoCSV: resultado.encontradoNoCSV,
+      emitido: resultado.emitido,
+      dadosCSV: resultado.dadosCSV, // Manter dados extraídos do CSV
+      comparacaoData: resultado.comparacaoData,
+      realizado2Original: resultado.realizado2Original,
+      // Novos campos pré-calculados (substituem linhasCSV)
+      dataEmissaoCSV: dataEmissao,
+      dataCertificacaoCSV: dataCertificacao
+    };
+  });
+  
+  return {
+    totalLinhasProcessadas: posProcessamento.totalLinhasProcessadas,
+    valesEncontrados: posProcessamento.valesEncontrados,
+    valesNaoEncontrados: posProcessamento.valesNaoEncontrados,
+    valesEmitidos: posProcessamento.valesEmitidos,
+    valesNaoEmitidos: posProcessamento.valesNaoEmitidos,
+    discrepânciasData: posProcessamento.discrepânciasData,
+    resultados: resultadosOtimizados
+  };
+}
+
+/**
+ * @swagger
+ * Otimiza dados de processamento das LDs para salvamento
+ * Remove campos não utilizados nos gráficos
+ * @param {Array} processamento - Resultados do processamento das LDs
+ * @returns {Array} Dados otimizados para salvamento
+ */
+function otimizarDadosProcessamento(processamento) {
+  if (!processamento || !Array.isArray(processamento)) {
+    return processamento;
+  }
+  
+  return processamento.map(resultado => ({
+    nomeArquivo: resultado.nomeArquivo,
+    ld: resultado.ld,
+    revisao: resultado.revisao,
+    // Otimizar dados: manter apenas campos necessários para gráficos
+    dados: (resultado.dados || []).map(linha => ({
+      'NO VALE': linha['NO VALE'],
+      'Disciplina': linha['Disciplina'],
+      'FORMATO': linha['FORMATO'],
+      'DataPrevisto': linha['DataPrevisto'],
+      'PREVISTO 2': linha['PREVISTO 2'],
+      'REALIZADO 2': linha['REALIZADO 2']
+    })),
+    // Manter estatísticas básicas
+    totalLinhas: resultado.totalLinhas,
+    linhasProcessadas: resultado.linhasProcessadas
+  }));
+}
+
+/**
+ * @swagger
+ * Lista todas as LDs salvas no localStorage
+ * @returns {Array} Array de objetos com informações das LDs salvas
+ */
+function listarLDsSalvas() {
+  const ldsSalvas = [];
+  
+  for (let i = 0; i < localStorage.length; i++) {
+    const chave = localStorage.key(i);
+    if (chave && chave.startsWith('posProcessamento_LD_')) {
+      try {
+        const dados = JSON.parse(localStorage.getItem(chave));
+        const ldNome = chave.replace('posProcessamento_LD_', '').replace(/_/g, '-');
+        ldsSalvas.push({
+          chave: chave,
+          ld: dados.ldEspecifica || ldNome,
+          dataProcessamento: dados.dataProcessamento,
+          totalDocs: dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0,
+          tamanhoKB: (new Blob([localStorage.getItem(chave)]).size / 1024).toFixed(1)
+        });
+      } catch (e) {
+        console.warn('Erro ao ler LD salva:', chave, e);
+      }
+    }
+  }
+  
+  return ldsSalvas;
+}
+
 /**
  * @swagger
  * Salva dados do pós-processamento no navegador
+ * @param {string} ldEspecifica - (Opcional) Nome da LD específica para salvar, ou null para salvar todas
  */
-function salvarDadosPosProcessamento() {
+function salvarDadosPosProcessamento(ldEspecifica = null) {
   // Verificar dados mínimos necessários (resultadoValidacao é opcional)
   if (!resultadoPosProcessamento || !resultadosProcessamento) {
     const mensagem = 'Dados não disponíveis para salvar. É necessário processar as LDs e realizar o pós-processamento primeiro.';
@@ -1658,35 +1799,78 @@ function salvarDadosPosProcessamento() {
   }
   
   try {
-    // Calcular hash simples do CSV (usando timestamp como proxy)
-    const hashCSV = typeof indiceCSVGerencial !== 'undefined' && indiceCSVGerencial ? `csv_${Date.now()}` : null;
+    // Filtrar por LD específica se solicitado
+    let posProcessamentoParaSalvar = resultadoPosProcessamento;
+    let processamentoParaSalvar = resultadosProcessamento;
+    
+    if (ldEspecifica) {
+      // Filtrar resultados da LD específica
+      posProcessamentoParaSalvar = {
+        ...resultadoPosProcessamento,
+        resultados: resultadoPosProcessamento.resultados.filter(r => r.ld === ldEspecifica)
+      };
+      processamentoParaSalvar = resultadosProcessamento.filter(r => r.ld === ldEspecifica);
+    }
+    
+    // Otimizar dados antes de salvar (remover campos desnecessários)
+    const posProcessamentoOtimizado = otimizarDadosPosProcessamento(posProcessamentoParaSalvar);
+    const processamentoOtimizado = otimizarDadosProcessamento(processamentoParaSalvar);
+    
+    // Construir objeto com metadados do CSV
+    const infoCSV = {
+      nomeArquivo: metadadosCSV?.nomeArquivo || null,
+      dataModificacao: metadadosCSV?.dataModificacao || null,
+      dataCarregamento: metadadosCSV?.dataCarregamento || new Date().toISOString(),
+      totalLinhasCSV: metadadosCSV?.totalLinhas || null,
+      valesEncontradosNoCSV: metadadosCSV?.valesEncontrados || null
+    };
     
     const dadosParaSalvar = {
+      versao: '2.0', // Versão do formato de dados
       dataProcessamento: new Date().toISOString(),
-      resultadoPosProcessamento: resultadoPosProcessamento,
-      hashCSV: hashCSV,
-      resultadosProcessamento: resultadosProcessamento,
-      resultadoValidacao: resultadoValidacao || null // Opcional
+      ldEspecifica: ldEspecifica || null, // Identificar se é salvamento parcial
+      infoCSV: infoCSV,
+      resultadoPosProcessamento: posProcessamentoOtimizado,
+      resultadosProcessamento: processamentoOtimizado,
+      resultadoValidacao: resultadoValidacao || null
     };
     
     // Serializar dados
     const dadosSerializados = JSON.stringify(dadosParaSalvar);
     
     // Verificar tamanho (limite do localStorage é ~5-10MB dependendo do navegador)
-    const tamanhoMB = new Blob([dadosSerializados]).size / (1024 * 1024);
+    const tamanhoBytes = new Blob([dadosSerializados]).size;
+    const tamanhoMB = tamanhoBytes / (1024 * 1024);
+    const tamanhoKB = tamanhoBytes / 1024;
+    
+    console.log(`📊 Tamanho dos dados para salvar: ${tamanhoMB >= 1 ? tamanhoMB.toFixed(2) + ' MB' : tamanhoKB.toFixed(2) + ' KB'}`);
+    
     if (tamanhoMB > 5) {
       console.warn('Dados muito grandes para salvar no localStorage:', tamanhoMB.toFixed(2), 'MB');
-      const continuar = confirm(`Aviso: Os dados são muito grandes (${tamanhoMB.toFixed(2)} MB) e podem não ser salvos completamente. Limite recomendado: 5 MB.\n\nDeseja continuar mesmo assim?`);
+      const continuar = confirm(
+        `⚠️ Aviso: Os dados são grandes (${tamanhoMB.toFixed(2)} MB).\n\n` +
+        `Limite recomendado: 5 MB.\n\n` +
+        `Sugestões:\n` +
+        `• Salvar apenas LDs específicas (use o botão "Salvar LD")\n` +
+        `• Limpar dados salvos antigos\n\n` +
+        `Deseja continuar mesmo assim?`
+      );
       if (!continuar) {
         return;
       }
     }
     
+    // Definir chave de armazenamento
+    const chaveStorage = ldEspecifica 
+      ? `posProcessamento_LD_${ldEspecifica.replace(/[^a-zA-Z0-9]/g, '_')}`
+      : 'posProcessamento_dados';
+    
     // Salvar no localStorage
-    localStorage.setItem('posProcessamento_dados', dadosSerializados);
+    localStorage.setItem(chaveStorage, dadosSerializados);
     
     // Atualizar interface
     exibirInfoDadosSalvos();
+    verificarDadosSalvosInicio();
     
     // Feedback visual
     const btnSalvar = document.getElementById('btnSalvarDadosAtuais');
@@ -1700,11 +1884,21 @@ function salvarDadosPosProcessamento() {
       }, 2000);
     }
     
-    console.log('Dados salvos com sucesso no localStorage');
+    const msgSucesso = ldEspecifica 
+      ? `Dados da LD "${ldEspecifica}" salvos com sucesso (${tamanhoKB.toFixed(1)} KB)`
+      : `Dados salvos com sucesso (${tamanhoMB >= 1 ? tamanhoMB.toFixed(2) + ' MB' : tamanhoKB.toFixed(1) + ' KB'})`;
+    console.log('✅ ' + msgSucesso);
+    
   } catch (erro) {
     console.error('Erro ao salvar dados:', erro);
     if (erro.name === 'QuotaExceededError') {
-      alert('Erro: Espaço insuficiente no navegador. Limpe dados salvos ou use outro navegador.');
+      alert(
+        'Erro: Espaço insuficiente no navegador.\n\n' +
+        'Sugestões:\n' +
+        '• Limpe dados salvos antigos\n' +
+        '• Salve apenas LDs específicas\n' +
+        '• Use outro navegador com mais espaço'
+      );
     } else {
       alert(`Erro ao salvar dados: ${erro.message}`);
     }
@@ -1713,13 +1907,69 @@ function salvarDadosPosProcessamento() {
 
 /**
  * @swagger
- * Carrega dados salvos do pós-processamento
+ * Reconstrói dados de linhasCSV a partir dos campos otimizados
+ * Necessário para compatibilidade com funções que esperam linhasCSV
+ * @param {Object} resultado - Resultado otimizado do pós-processamento
+ * @returns {Array} Array de linhasCSV reconstruído
  */
-function carregarDadosPosProcessamento() {
+function reconstruirLinhasCSV(resultado) {
+  const linhasCSV = [];
+  
+  // Se já tem linhasCSV, usar diretamente
+  if (resultado.linhasCSV && Array.isArray(resultado.linhasCSV)) {
+    return resultado.linhasCSV;
+  }
+  
+  // Reconstruir a partir dos campos otimizados
+  if (resultado.dataEmissaoCSV) {
+    linhasCSV.push({
+      'Data GR Rec': resultado.dataEmissaoCSV,
+      'EMISSAO': 'PRIMEMISSAO',
+      'PRIMCERTIFICACAO': false
+    });
+  }
+  
+  if (resultado.dataCertificacaoCSV) {
+    // Verificar se já adicionamos uma linha com mesma data (emissão = certificação)
+    const jaAdicionou = linhasCSV.find(l => 
+      l['Data GR Rec'] === resultado.dataCertificacaoCSV && l['EMISSAO'] === 'PRIMEMISSAO'
+    );
+    
+    if (jaAdicionou) {
+      // Atualizar a linha existente
+      jaAdicionou['PRIMCERTIFICACAO'] = true;
+    } else {
+      // Adicionar nova linha
+      linhasCSV.push({
+        'Data GR Rec': resultado.dataCertificacaoCSV,
+        'EMISSAO': 'REVISAO',
+        'PRIMCERTIFICACAO': true
+      });
+    }
+  }
+  
+  return linhasCSV;
+}
+
+/**
+ * @swagger
+ * Carrega dados salvos do pós-processamento
+ * @param {string} ldEspecifica - (Opcional) Nome da LD específica para carregar, ou null para carregar todos
+ */
+function carregarDadosPosProcessamento(ldEspecifica = null) {
   try {
-    const dadosSalvos = localStorage.getItem('posProcessamento_dados');
+    // Determinar chave de armazenamento
+    const chaveStorage = ldEspecifica 
+      ? `posProcessamento_LD_${ldEspecifica.replace(/[^a-zA-Z0-9]/g, '_')}`
+      : 'posProcessamento_dados';
+    
+    const dadosSalvos = localStorage.getItem(chaveStorage);
     if (!dadosSalvos) {
-      alert('Nenhum dado salvo encontrado.');
+      if (ldEspecifica) {
+        alert(`Nenhum dado salvo encontrado para a LD "${ldEspecifica}".`);
+      } else {
+        alert('Nenhum dado salvo encontrado.');
+      }
       return;
     }
     
@@ -1732,10 +1982,34 @@ function carregarDadosPosProcessamento() {
       return;
     }
     
+    // Verificar versão dos dados e reconstruir linhasCSV se necessário
+    if (dados.versao === '2.0') {
+      // Dados otimizados - reconstruir linhasCSV para compatibilidade
+      dados.resultadoPosProcessamento.resultados = dados.resultadoPosProcessamento.resultados.map(resultado => ({
+        ...resultado,
+        linhasCSV: reconstruirLinhasCSV(resultado)
+      }));
+      
+      console.log('📊 Dados carregados no formato otimizado (v2.0)');
+    } else {
+      console.log('📊 Dados carregados no formato original (v1.x)');
+    }
+    
     // Restaurar dados
     resultadoPosProcessamento = dados.resultadoPosProcessamento;
     resultadosProcessamento = dados.resultadosProcessamento;
-    resultadoValidacao = dados.resultadoValidacao || null; // Opcional
+    resultadoValidacao = dados.resultadoValidacao || null;
+    
+    // Restaurar metadados do CSV se disponíveis
+    if (dados.infoCSV) {
+      metadadosCSV = {
+        nomeArquivo: dados.infoCSV.nomeArquivo,
+        dataModificacao: dados.infoCSV.dataModificacao,
+        dataCarregamento: dados.infoCSV.dataCarregamento,
+        totalLinhas: dados.infoCSV.totalLinhasCSV,
+        valesEncontrados: dados.infoCSV.valesEncontradosNoCSV
+      };
+    }
     
     // Tornar global
     if (typeof window !== 'undefined') {
@@ -1753,7 +2027,6 @@ function carregarDadosPosProcessamento() {
     // Garantir que dashboard seja inicializado se necessário
     const sectionDashboard = document.getElementById('sectionDashboard');
     if (sectionDashboard && !sectionDashboard.classList.contains('hidden')) {
-      // Se dashboard já está visível, inicializar
       if (typeof inicializarDashboard === 'function') {
         inicializarDashboard();
       }
@@ -1761,13 +2034,30 @@ function carregarDadosPosProcessamento() {
     
     // Atualizar informações dos dados salvos
     exibirInfoDadosSalvos();
+    verificarDadosSalvosInicio();
     
     // Mostrar mensagem de sucesso
     const dataProcessamento = new Date(dados.dataProcessamento);
     const totalDocs = dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0;
-    alert(`Dados carregados com sucesso!\n\nProcessados em: ${dataProcessamento.toLocaleString('pt-BR')}\nTotal de documentos: ${totalDocs}`);
     
-    console.log('Dados carregados com sucesso do localStorage');
+    let mensagem = `Dados carregados com sucesso!\n\nProcessados em: ${dataProcessamento.toLocaleString('pt-BR')}\nTotal de documentos: ${totalDocs}`;
+    
+    // Adicionar informações do CSV se disponíveis
+    if (dados.infoCSV && dados.infoCSV.nomeArquivo) {
+      mensagem += `\n\nCSV utilizado: ${dados.infoCSV.nomeArquivo}`;
+      if (dados.infoCSV.dataCarregamento) {
+        const dataCSV = new Date(dados.infoCSV.dataCarregamento);
+        mensagem += `\nCSV carregado em: ${dataCSV.toLocaleString('pt-BR')}`;
+      }
+    }
+    
+    if (ldEspecifica) {
+      mensagem = `Dados da LD "${ldEspecifica}" carregados!\n\n` + mensagem.split('\n\n').slice(1).join('\n\n');
+    }
+    
+    alert(mensagem);
+    
+    console.log('✅ Dados carregados com sucesso do localStorage');
   } catch (erro) {
     console.error('Erro ao carregar dados:', erro);
     alert(`Erro ao carregar dados salvos: ${erro.message}\n\nOs dados podem estar corrompidos.`);
@@ -1777,16 +2067,152 @@ function carregarDadosPosProcessamento() {
 /**
  * @swagger
  * Limpa dados salvos do pós-processamento
+ * @param {string} ldEspecifica - (Opcional) Nome da LD específica para limpar, ou null para limpar todos
  */
-function limparDadosSalvos() {
-  if (confirm('Tem certeza que deseja limpar os dados salvos? Esta ação não pode ser desfeita.')) {
+function limparDadosSalvos(ldEspecifica = null) {
+  const mensagem = ldEspecifica 
+    ? `Tem certeza que deseja limpar os dados salvos da LD "${ldEspecifica}"?`
+    : 'Tem certeza que deseja limpar TODOS os dados salvos? Esta ação não pode ser desfeita.';
+  
+  if (confirm(mensagem)) {
     try {
-      localStorage.removeItem('posProcessamento_dados');
+      if (ldEspecifica) {
+        // Limpar apenas LD específica
+        const chave = `posProcessamento_LD_${ldEspecifica.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        localStorage.removeItem(chave);
+        alert(`Dados da LD "${ldEspecifica}" removidos com sucesso.`);
+      } else {
+        // Limpar dados consolidados
+        localStorage.removeItem('posProcessamento_dados');
+        
+        // Também limpar LDs individuais se desejado
+        const ldsSalvas = listarLDsSalvas();
+        if (ldsSalvas.length > 0) {
+          const limparTodas = confirm(`Existem ${ldsSalvas.length} LDs salvas individualmente. Deseja limpar também?`);
+          if (limparTodas) {
+            ldsSalvas.forEach(ld => {
+              localStorage.removeItem(ld.chave);
+            });
+            alert(`Dados consolidados e ${ldsSalvas.length} LDs individuais foram removidos.`);
+          } else {
+            alert('Dados consolidados removidos. LDs individuais mantidas.');
+          }
+        } else {
+          alert('Dados salvos foram removidos com sucesso.');
+        }
+      }
+      
       exibirInfoDadosSalvos();
-      alert('Dados salvos foram removidos com sucesso.');
+      verificarDadosSalvosInicio();
     } catch (erro) {
       console.error('Erro ao limpar dados:', erro);
       alert('Erro ao limpar dados salvos.');
+    }
+  }
+}
+
+/**
+ * @swagger
+ * Abre modal para selecionar LD para salvar individualmente
+ */
+function abrirSeletorSalvarLD() {
+  if (!resultadosProcessamento || resultadosProcessamento.length === 0) {
+    alert('Nenhuma LD processada para salvar.');
+    return;
+  }
+  
+  // Coletar LDs únicas
+  const ldsDisponiveis = [...new Set(resultadosProcessamento.map(r => r.ld).filter(l => l))];
+  
+  if (ldsDisponiveis.length === 0) {
+    alert('Nenhuma LD identificada nos dados processados.');
+    return;
+  }
+  
+  // Criar lista de opções
+  const opcoes = ldsDisponiveis.map((ld, index) => `${index + 1}. ${ld}`).join('\n');
+  
+  const escolha = prompt(
+    `Selecione a LD para salvar individualmente (digite o número):\n\n${opcoes}\n\n` +
+    `(Salvar individualmente permite carregar apenas essa LD depois)`
+  );
+  
+  if (escolha) {
+    const indice = parseInt(escolha, 10) - 1;
+    if (indice >= 0 && indice < ldsDisponiveis.length) {
+      salvarDadosPosProcessamento(ldsDisponiveis[indice]);
+    } else {
+      alert('Opção inválida.');
+    }
+  }
+}
+
+/**
+ * @swagger
+ * Abre modal para selecionar LD salva para carregar
+ */
+function abrirSeletorCarregarLD() {
+  const ldsSalvas = listarLDsSalvas();
+  
+  if (ldsSalvas.length === 0) {
+    alert('Nenhuma LD salva individualmente encontrada.');
+    return;
+  }
+  
+  // Criar lista de opções
+  const opcoes = ldsSalvas.map((ld, index) => {
+    const data = new Date(ld.dataProcessamento);
+    return `${index + 1}. ${ld.ld} (${ld.totalDocs} docs, ${ld.tamanhoKB} KB - ${data.toLocaleDateString('pt-BR')})`;
+  }).join('\n');
+  
+  const escolha = prompt(
+    `Selecione a LD para carregar (digite o número):\n\n${opcoes}\n\n` +
+    `Ou digite 0 para carregar os dados consolidados (todas as LDs)`
+  );
+  
+  if (escolha) {
+    const indice = parseInt(escolha, 10);
+    if (indice === 0) {
+      carregarDadosPosProcessamento();
+    } else if (indice >= 1 && indice <= ldsSalvas.length) {
+      carregarDadosPosProcessamento(ldsSalvas[indice - 1].ld);
+    } else {
+      alert('Opção inválida.');
+    }
+  }
+}
+
+/**
+ * @swagger
+ * Abre modal para selecionar LD salva para limpar
+ */
+function abrirSeletorLimparLD() {
+  const ldsSalvas = listarLDsSalvas();
+  
+  if (ldsSalvas.length === 0) {
+    alert('Nenhuma LD salva individualmente encontrada.');
+    return;
+  }
+  
+  // Criar lista de opções
+  const opcoes = ldsSalvas.map((ld, index) => {
+    const data = new Date(ld.dataProcessamento);
+    return `${index + 1}. ${ld.ld} (${ld.totalDocs} docs, ${ld.tamanhoKB} KB)`;
+  }).join('\n');
+  
+  const escolha = prompt(
+    `Selecione a LD para REMOVER (digite o número):\n\n${opcoes}\n\n` +
+    `Ou digite 0 para limpar TODOS os dados (consolidados + LDs individuais)`
+  );
+  
+  if (escolha) {
+    const indice = parseInt(escolha, 10);
+    if (indice === 0) {
+      limparDadosSalvos();
+    } else if (indice >= 1 && indice <= ldsSalvas.length) {
+      limparDadosSalvos(ldsSalvas[indice - 1].ld);
+    } else {
+      alert('Opção inválida.');
     }
   }
 }
@@ -1803,18 +2229,64 @@ function exibirInfoDadosSalvos() {
   
   try {
     const dadosSalvos = localStorage.getItem('posProcessamento_dados');
-    if (dadosSalvos) {
-      const dados = JSON.parse(dadosSalvos);
-      const dataProcessamento = new Date(dados.dataProcessamento);
-      const totalDocs = dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0;
-      const tamanhoMB = new Blob([dadosSalvos]).size / (1024 * 1024);
-      
+    const ldsSalvas = listarLDsSalvas();
+    
+    if (dadosSalvos || ldsSalvas.length > 0) {
       container.style.display = 'block';
-      info.innerHTML = `
-        <strong>Último processamento:</strong> ${dataProcessamento.toLocaleString('pt-BR')}<br>
-        <strong>Total de documentos:</strong> ${totalDocs}<br>
-        <strong>Tamanho:</strong> ${tamanhoMB.toFixed(2)} MB
-      `;
+      let htmlInfo = '';
+      
+      // Informações do salvamento principal
+      if (dadosSalvos) {
+        const dados = JSON.parse(dadosSalvos);
+        const dataProcessamento = new Date(dados.dataProcessamento);
+        const totalDocs = dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0;
+        const tamanhoBytes = new Blob([dadosSalvos]).size;
+        const tamanhoMB = tamanhoBytes / (1024 * 1024);
+        const tamanhoKB = tamanhoBytes / 1024;
+        const tamanhoTexto = tamanhoMB >= 1 ? `${tamanhoMB.toFixed(2)} MB` : `${tamanhoKB.toFixed(1)} KB`;
+        
+        htmlInfo += `
+          <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #ddd;">
+            <strong style="color: var(--color-primary);">📦 Dados Consolidados</strong><br>
+            <strong>Processado em:</strong> ${dataProcessamento.toLocaleString('pt-BR')}<br>
+            <strong>Total de documentos:</strong> ${totalDocs}<br>
+            <strong>Tamanho:</strong> ${tamanhoTexto}
+        `;
+        
+        // Adicionar informações do CSV se disponíveis (formato v2.0)
+        if (dados.infoCSV && dados.infoCSV.nomeArquivo) {
+          htmlInfo += `<br><strong>CSV:</strong> ${dados.infoCSV.nomeArquivo}`;
+          if (dados.infoCSV.dataCarregamento) {
+            const dataCSV = new Date(dados.infoCSV.dataCarregamento);
+            htmlInfo += ` <span style="color: #666;">(${dataCSV.toLocaleDateString('pt-BR')})</span>`;
+          }
+        }
+        
+        // Indicar versão dos dados
+        if (dados.versao) {
+          htmlInfo += `<br><span style="color: #999; font-size: 0.85em;">Formato: v${dados.versao}</span>`;
+        }
+        
+        htmlInfo += '</div>';
+      }
+      
+      // Informações das LDs salvas individualmente
+      if (ldsSalvas.length > 0) {
+        htmlInfo += `
+          <div style="margin-top: 8px;">
+            <strong style="color: var(--color-primary);">📋 LDs Salvas Individualmente (${ldsSalvas.length})</strong>
+            <ul style="margin: 5px 0; padding-left: 20px; font-size: 0.9em;">
+        `;
+        
+        ldsSalvas.forEach(ld => {
+          const dataLD = new Date(ld.dataProcessamento);
+          htmlInfo += `<li><strong>${ld.ld}</strong> - ${ld.totalDocs} docs (${ld.tamanhoKB} KB) - ${dataLD.toLocaleDateString('pt-BR')}</li>`;
+        });
+        
+        htmlInfo += '</ul></div>';
+      }
+      
+      info.innerHTML = htmlInfo;
     } else {
       container.style.display = 'none';
     }
@@ -1826,22 +2298,120 @@ function exibirInfoDadosSalvos() {
 
 // Event Listeners para dados salvos
 function inicializarEventListenersDadosSalvos() {
+  // Botões da seção de pós-processamento (existentes)
   const btnCarregarDadosSalvos = document.getElementById('btnCarregarDadosSalvos');
   const btnSalvarDadosAtuais = document.getElementById('btnSalvarDadosAtuais');
   const btnLimparDadosSalvos = document.getElementById('btnLimparDadosSalvos');
   
   if (btnCarregarDadosSalvos) {
-    btnCarregarDadosSalvos.addEventListener('click', carregarDadosPosProcessamento);
+    btnCarregarDadosSalvos.addEventListener('click', () => carregarDadosPosProcessamento());
   }
   if (btnSalvarDadosAtuais) {
-    btnSalvarDadosAtuais.addEventListener('click', salvarDadosPosProcessamento);
+    btnSalvarDadosAtuais.addEventListener('click', () => salvarDadosPosProcessamento());
   }
   if (btnLimparDadosSalvos) {
-    btnLimparDadosSalvos.addEventListener('click', limparDadosSalvos);
+    btnLimparDadosSalvos.addEventListener('click', () => limparDadosSalvos());
+  }
+  
+  // Botões da seção inicial de dados salvos (novos)
+  const btnCarregarDadosInicio = document.getElementById('btnCarregarDadosInicio');
+  const btnCarregarLDEspecifica = document.getElementById('btnCarregarLDEspecifica');
+  const btnLimparDadosInicio = document.getElementById('btnLimparDadosInicio');
+  
+  if (btnCarregarDadosInicio) {
+    btnCarregarDadosInicio.addEventListener('click', () => carregarDadosPosProcessamento());
+  }
+  if (btnCarregarLDEspecifica) {
+    btnCarregarLDEspecifica.addEventListener('click', abrirSeletorCarregarLD);
+  }
+  if (btnLimparDadosInicio) {
+    btnLimparDadosInicio.addEventListener('click', abrirSeletorLimparLD);
   }
   
   // Verificar e exibir dados salvos ao carregar página
   exibirInfoDadosSalvos();
+  verificarDadosSalvosInicio();
+}
+
+/**
+ * @swagger
+ * Verifica se há dados salvos e mostra a seção inicial se houver
+ */
+function verificarDadosSalvosInicio() {
+  const sectionDadosSalvosInicio = document.getElementById('sectionDadosSalvosInicio');
+  const infoDadosSalvosInicio = document.getElementById('dadosSalvosInfoInicio');
+  
+  if (!sectionDadosSalvosInicio || !infoDadosSalvosInicio) return;
+  
+  try {
+    const dadosConsolidados = localStorage.getItem('posProcessamento_dados');
+    const ldsSalvas = listarLDsSalvas();
+    
+    // Mostrar seção se houver dados salvos
+    if (dadosConsolidados || ldsSalvas.length > 0) {
+      sectionDadosSalvosInicio.style.display = 'block';
+      
+      let htmlInfo = '';
+      
+      // Informações dos dados consolidados
+      if (dadosConsolidados) {
+        const dados = JSON.parse(dadosConsolidados);
+        const dataProcessamento = new Date(dados.dataProcessamento);
+        const totalDocs = dados.resultadoPosProcessamento?.totalLinhasProcessadas || 0;
+        const tamanhoBytes = new Blob([dadosConsolidados]).size;
+        const tamanhoKB = tamanhoBytes / 1024;
+        const tamanhoMB = tamanhoBytes / (1024 * 1024);
+        const tamanhoTexto = tamanhoMB >= 1 ? `${tamanhoMB.toFixed(2)} MB` : `${tamanhoKB.toFixed(1)} KB`;
+        
+        htmlInfo += `
+          <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <div style="background: white; padding: 12px 18px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              <div style="font-size: 1.5em; font-weight: bold; color: var(--color-primary);">${totalDocs.toLocaleString()}</div>
+              <div style="font-size: 0.85em; color: var(--color-text-light);">documentos</div>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+              <div><strong>Processado em:</strong> ${dataProcessamento.toLocaleString('pt-BR')}</div>
+              <div><strong>Tamanho:</strong> ${tamanhoTexto}</div>
+        `;
+        
+        // Informações do CSV se disponíveis
+        if (dados.infoCSV && dados.infoCSV.nomeArquivo) {
+          const nomeCSV = dados.infoCSV.nomeArquivo.length > 40 
+            ? dados.infoCSV.nomeArquivo.substring(0, 40) + '...' 
+            : dados.infoCSV.nomeArquivo;
+          htmlInfo += `<div><strong>CSV:</strong> ${nomeCSV}</div>`;
+        }
+        
+        htmlInfo += '</div></div>';
+      }
+      
+      // Informações das LDs individuais
+      if (ldsSalvas.length > 0) {
+        htmlInfo += `
+          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0,126,122,0.2);">
+            <strong style="color: var(--color-primary);">📋 ${ldsSalvas.length} LD(s) salva(s) individualmente</strong>
+            <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
+        `;
+        
+        ldsSalvas.slice(0, 5).forEach(ld => {
+          htmlInfo += `<span style="background: white; padding: 4px 10px; border-radius: 15px; font-size: 0.85em; border: 1px solid rgba(0,126,122,0.3);">${ld.ld}</span>`;
+        });
+        
+        if (ldsSalvas.length > 5) {
+          htmlInfo += `<span style="padding: 4px 10px; font-size: 0.85em; color: var(--color-text-light);">+${ldsSalvas.length - 5} mais</span>`;
+        }
+        
+        htmlInfo += '</div></div>';
+      }
+      
+      infoDadosSalvosInicio.innerHTML = htmlInfo;
+    } else {
+      sectionDadosSalvosInicio.style.display = 'none';
+    }
+  } catch (erro) {
+    console.error('Erro ao verificar dados salvos:', erro);
+    sectionDadosSalvosInicio.style.display = 'none';
+  }
 }
 
 // Executar quando DOM estiver pronto
@@ -1853,11 +2423,45 @@ if (document.readyState === 'loading') {
 
 /**
  * @swagger
+ * Converte valor para Date se for string ou já for Date
+ * @param {*} valor - Valor a ser convertido
+ * @returns {Date|null} Objeto Date ou null
+ */
+function converterParaDate(valor) {
+  if (!valor) return null;
+  if (valor instanceof Date) return valor;
+  if (typeof valor === 'string') {
+    const data = new Date(valor);
+    return isNaN(data.getTime()) ? null : data;
+  }
+  return null;
+}
+
+/**
+ * @swagger
+ * Formata data para exibição em pt-BR
+ * @param {*} valor - Valor da data (Date, string ou null)
+ * @param {string} fallback - Valor de fallback para exibição
+ * @returns {string} Data formatada ou fallback
+ */
+function formatarDataParaExibicao(valor, fallback = 'N/A') {
+  const data = converterParaDate(valor);
+  if (data) {
+    return data.toLocaleDateString('pt-BR');
+  }
+  if (valor && typeof valor === 'string') {
+    return valor; // Retornar string original se não conseguir converter
+  }
+  return fallback;
+}
+
+/**
+ * @swagger
  * Exibe tabela de discrepâncias de data
  */
 function exibirDiscrepanciasData() {
   const discrepancias = resultadoPosProcessamento.resultados.filter(r => 
-    r.comparacaoData.iguais === false && r.comparacaoData.diferenca !== null
+    r.comparacaoData && r.comparacaoData.iguais === false && r.comparacaoData.diferenca !== null
   );
   
   if (discrepancias.length === 0) {
@@ -1872,21 +2476,17 @@ function exibirDiscrepanciasData() {
   discrepancias.forEach(resultado => {
     const tr = document.createElement('tr');
     
-    // Formatar data GR Rec
-    let dataGRRecText = 'N/A';
-    if (resultado.comparacaoData.dataCSV) {
-      dataGRRecText = resultado.comparacaoData.dataCSV.toLocaleDateString('pt-BR');
-    } else if (resultado.dadosCSV.dataGRRec) {
-      dataGRRecText = String(resultado.dadosCSV.dataGRRec);
-    }
+    // Formatar data GR Rec (usando função segura de conversão)
+    let dataGRRecText = formatarDataParaExibicao(
+      resultado.comparacaoData?.dataCSV, 
+      resultado.dadosCSV?.dataGRRec || 'N/A'
+    );
     
-    // Formatar REALIZADO 2
-    let realizado2Text = 'N/A';
-    if (resultado.comparacaoData.dataLD) {
-      realizado2Text = resultado.comparacaoData.dataLD.toLocaleDateString('pt-BR');
-    } else if (resultado.realizado2Original) {
-      realizado2Text = String(resultado.realizado2Original);
-    }
+    // Formatar REALIZADO 2 (usando função segura de conversão)
+    let realizado2Text = formatarDataParaExibicao(
+      resultado.comparacaoData?.dataLD, 
+      resultado.realizado2Original || 'N/A'
+    );
     
     // Sugestão de ação
     let acaoSugerida = 'Verificar';

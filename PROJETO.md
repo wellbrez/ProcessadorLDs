@@ -433,17 +433,31 @@ Status: Atraso Leve (5 dias de atraso)
 ### Funcionalidades
 
 - **Salvamento Automático**: Dados são salvos automaticamente após processamento bem-sucedido
+- **Salvamento Otimizado (v2.0)**: Dados são compactados removendo campos redundantes
+- **Salvamento por LD**: Possibilidade de salvar/carregar LDs específicas individualmente
 - **Carregamento**: Restaurar dados salvos sem necessidade de reprocessar
 - **Gerenciamento**: Visualizar informações sobre dados salvos e limpar quando necessário
 - **Limite**: Sistema valida tamanho (recomendado até 5MB) e alerta se necessário
 
 ### Dados Salvos
 
-- Resultado do pós-processamento
-- Dados das LDs processadas
+- Resultado do pós-processamento (otimizado, sem `linhasCSV` redundante)
+- Dados das LDs processadas (apenas campos necessários para gráficos)
 - Resultado da validação
 - Data e hora do processamento
-- Hash do CSV para validação
+- **Metadados do CSV** (novo):
+  - Nome do arquivo CSV utilizado
+  - Data de modificação do arquivo CSV
+  - Data/hora de carregamento do CSV
+  - Total de linhas processadas
+  - Quantidade de vales encontrados
+
+### Otimização de Tamanho
+
+O formato v2.0 reduz significativamente o tamanho dos dados salvos:
+- Remove `linhasCSV` completo (que continha todas as linhas do CSV para cada vale)
+- Substitui por campos pré-calculados: `dataEmissaoCSV` e `dataCertificacaoCSV`
+- Mantém apenas campos necessários para regenerar gráficos e tabelas
 
 ## Próximos Passos
 
